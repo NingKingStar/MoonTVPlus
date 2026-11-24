@@ -1,0 +1,150 @@
+{
+  "result": "passed at research round for static research/document checks; the P0 implementation round that followed is recorded in p0Implementation and is a separate, partly-runtime result",
+  "date": "2026-11-24",
+  "sha": "5b132342e7d36282e67edd73d188468d8c446ac6",
+  "counts": {
+    "trackedFiles": 759,
+    "indexedTextFiles": 687,
+    "pages": 32,
+    "apiRouteFiles": 135,
+    "libFiles": 120,
+    "appFiles": 214,
+    "headWorkflows": 11,
+    "mainRequirements": 130,
+    "conditionalGapRecords": 4,
+    "evidenceReferences": 431,
+    "byModule": {
+      "BAS": 2,
+      "AUTH": 11,
+      "DIS": 9,
+      "SRC": 8,
+      "DJS": 2,
+      "DET": 5,
+      "PLY": 16,
+      "SUB": 3,
+      "DM": 4,
+      "AD": 2,
+      "DL": 5,
+      "LIVE": 5,
+      "TV": 7,
+      "LIB": 4,
+      "CFG": 5,
+      "NTF": 4,
+      "TG": 1,
+      "AI": 2,
+      "ROOM": 6,
+      "ADM": 19,
+      "OPS": 10
+    },
+    "byPriority": {
+      "P0": 23,
+      "P1": 41,
+      "P2": 58,
+      "P3": 8
+    },
+    "byStatus": {
+      "R": 5,
+      "M": 8,
+      "U": 117
+    }
+  },
+  "configurationDeclarations": 189,
+  "settingsKeys": 43,
+  "localDocumentLinksChecked": 11,
+  "uniqueMatrixIds": 134,
+  "csvDataRows": 130,
+  "csvColumns": 10,
+  "nativeReferenceFilesUnchangedSinceSnapshot": 25,
+  "apiRouteMappingsComplete": true,
+  "ciPatchApplyCheck": true,
+  "ciPatchApplied": true,
+  "decisionNotes": {
+    "active": 4,
+    "status": "3 implemented (architecture, testing, portable package) + 1 proposed (CI isolation)",
+    "pluginVerifyPassed": true
+  },
+  "realServerTestsExecuted": 39,
+  "productionActionsExecuted": 0,
+  "unownedTrackedChange": "package.json notes scripts",
+  "unownedNewFiles": [
+    "AGENTS.md",
+    ".github/workflows/verify-notes.yml"
+  ],
+  "deliverables": [
+    {
+      "path": "C:/project/MoonTVPlus/docs/nsh-baseline-inventory.json",
+      "sha256": "c3e91be83c8e5697236caa79adb38c21661a4c275aa25fdb55ec769462b4710e"
+    },
+    {
+      "path": "C:/project/MoonTVPlus/docs/nsh-baseline-inventory.md",
+      "sha256": "81033e32c678eb1027de6d4c1005ed7b0f84b1fa64d59f6ce4951d754e00f72d"
+    },
+    {
+      "path": "C:/project/MoonTVPlus/docs/nsh-ci-isolation.proposed.patch",
+      "sha256": "bc60e6add461b3a7fc1cf595ddd688c558d546ba6fda45819cf3a4ffc290d5d5"
+    },
+    {
+      "path": "C:/project/MoonTVPlus/docs/nsh-configuration-fields.md",
+      "sha256": "b497dda2988283b69dbd7e54ebdfbf062a5393996cf5cffcaa6566454f86ebec"
+    },
+    {
+      "path": "C:/project/MoonTVPlus/docs/nsh-decisions-proposed.md",
+      "sha256": "982a32b277b98fc270ad09a8791e39abfa185897c75a55467eb3c106812f3f0f"
+    },
+    {
+      "path": "C:/project/MoonTVPlus/docs/nsh-rebuild-requirements.csv",
+      "sha256": "2ef8da2159bcc5ad923890b63a9f397a3d210a3466e57852d0f758c04e1f9293"
+    },
+    {
+      "path": "C:/project/MoonTVPlus/docs/nsh-rebuild-requirements.md",
+      "sha256": "5e665f1e2f42e47d6b80cc552757ff8468cca542b9309951a7c02098460498c3"
+    },
+    {
+      "path": "C:/project/MoonTVPlus/docs/nsh-rebuild-roadmap.md",
+      "sha256": "e300c4b5ca74e2a2c4f018d1dc60604927329f68acea86ade7b22caa3fd21333"
+    }
+  ],
+  "realServerTestsScope": "isolated instance built from this repository at the same SHA (next dev + one-off SQLite + controlled upstream), no production access",
+  "ciPatchAppliedScope": "applied to the local working tree only; not committed, not pushed, no workflow triggered, no remote environment configured",
+  "p0Implementation": {
+    "client": "apps/desktop-nsh moontv-native 0.3.0",
+    "gates": "cargo fmt --check, cargo clippy --all-targets -D warnings, cargo test (13 unit + 1 live contract), cargo build --release",
+    "liveContract": {
+      "checks": 39,
+      "failed": 0,
+      "report": "apps/desktop-nsh/docs/p0-contract-2026-11-24.md",
+      "machineReport": "apps/desktop-nsh/docs/p0-contract-2026-11-24.json",
+      "harness": "apps/desktop-nsh/tests/contract/isolated-run.mjs"
+    },
+    "portablePackage": {
+      "path": "apps/desktop-nsh/dist/moontv-native-0.3.0-windows-x64-portable.zip",
+      "bytes": 29310820,
+      "sha256": "8f2a2d41075cc753a5adb5a78427355cde143cc7fb2eef7e5d973480f6b95394",
+      "signed": false,
+      "installer": false
+    },
+    "requirementsUpdated": [
+      "NSH-BAS-01",
+      "NSH-AUTH-01",
+      "NSH-AUTH-02",
+      "NSH-AUTH-10",
+      "NSH-AUTH-11",
+      "NSH-SRC-01",
+      "NSH-SRC-02",
+      "NSH-DET-01",
+      "NSH-LIB-01",
+      "NSH-LIB-02",
+      "NSH-LIB-03",
+      "NSH-OPS-08"
+    ],
+    "unverified": [
+      "real production instance (HTTPS, reverse proxy, sub-path)",
+      "Linux desktop and Linux server instance",
+      "multi-monitor, mixed DPI, hardware decoding",
+      "Turnstile instance",
+      "clean target machine install, code signing, auto update",
+      "real third-party sources",
+      "concurrent merge conflicts"
+    ]
+  }
+}

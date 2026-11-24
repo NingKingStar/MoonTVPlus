@@ -1,0 +1,31 @@
+diff --git a/.github/workflows/cloudflare-deploy.yml b/.github/workflows/cloudflare-deploy.yml
+index 1d48bb84..1b3455e6 100644
+--- a/.github/workflows/cloudflare-deploy.yml
++++ b/.github/workflows/cloudflare-deploy.yml
+@@ -4,6 +4,9 @@ on:
+   push:
+     branches:
+       - main #或你的主分支名称
++    paths-ignore:
++      - 'apps/desktop-nsh/**'
++      - 'docs/nsh-*'
+   workflow_dispatch:
+ 
+ concurrency:
+@@ -16,6 +19,8 @@ permissions:
+ 
+ jobs:
+   deploy:
++    if: github.ref == 'refs/heads/main'
++    environment: server-production
+     runs-on: ubuntu-latest
+     name: Deploy to Cloudflare Pages
+ 
+@@ -182,7 +187,6 @@ jobs:
+           fi
+           
+           echo "Updated wrangler.toml:"
+-          cat wrangler.toml
+ 
+       - name: Stage Android update package
+         env:
