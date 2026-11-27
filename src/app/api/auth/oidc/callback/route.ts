@@ -12,6 +12,9 @@ import {
 } from '@/lib/refresh-token';
 
 export const runtime = 'nodejs';
+// Built without a request: static export would parse an empty `request.url`
+// and fail the Cloudflare build. The callback is always request-scoped.
+export const dynamic = 'force-dynamic';
 
 // 生成签名
 async function generateSignature(
