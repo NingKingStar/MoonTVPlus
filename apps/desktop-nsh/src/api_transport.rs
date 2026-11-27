@@ -169,26 +169,167 @@ pub fn status_error(status: u16, retry_after: Option<u64>) -> ApiError {
         s => ApiError::Http(s),
     }
 }
+
+/// A proxy such as `http://127.0.0.1:7890`, normalised from whatever the
+/// environment or Windows gave us. `localhost` is rewritten to `127.0.0.1`
+/// because a dual-stack resolver often answers `::1` first and a Windows
+/// proxy usually listens on IPv4 only.
+fn normalize_proxy(raw: &str) -> Option<String> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    let candidate = raw
+        .split(';')
+        .map(str::trim)
+        .find_map(|part| match part.strip_prefix("http=") {
+            Some(host) if !host.is_empty() => Some(host),
+            _ if !part.contains('=') && !part.is_empty() => Some(part),
+            _ => None,
+        })?
+        .replace("localhost", "127.0.0.1");
+    if candidate.contains("://") {
+        Some(candidate)
+    } else {
+        Some(format!("http://{candidate}"))
+    }
+}
+
+fn proxy_from_env() -> Option<String> {
+    for key in [
+        "HTTPS_PROXY",
+        "https_proxy",
+        "HTTP_PROXY",
+        "http_proxy",
+        "ALL_PROXY",
+        "all_proxy",
+    ] {
+        if let Ok(value) = std::env::var(key)
+            && let Some(proxy) = normalize_proxy(&value)
+        {
+            return Some(proxy);
+        }
+    }
+    None
+}
+
+/// Windows Internet Settings (the same proxy the browser and Clash/other
+/// system proxies register). Read once; `reg` is asked without a console.
+#[cfg(windows)]
+fn proxy_from_system() -> Option<String> {
+    use std::os::windows::process::CommandExt;
+    let output = std::process::Command::new("reg")
+        .args([
+            "query",
+            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings",
+            "/v",
+            "ProxyEnable",
+        ])
+        .creation_flags(0x0800_0000)
+        .output()
+        .ok()?;
+    let enabled = String::from_utf8_lossy(&output.stdout).contains("0x1");
+    if !enabled {
+        return None;
+    }
+    let output = std::process::Command::new("reg")
+        .args([
+            "query",
+            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings",
+            "/v",
+            "ProxyServer",
+        ])
+        .creation_flags(0x0800_0000)
+        .output()
+        .ok()?;
+    let text = String::from_utf8_lossy(&output.stdout);
+    let server = text
+        .lines()
+        .find(|line| line.contains("ProxyServer"))
+        .and_then(|line| line.split("REG_SZ").nth(1))?;
+    normalize_proxy(server)
+}
+
+#[cfg(not(windows))]
+fn proxy_from_system() -> Option<String> {
+    None
+}
+
+/// Proxy used for every request, resolved once per process.
+fn proxy_url() -> Option<&'static str> {
+    static PROXY: OnceLock<Option<String>> = OnceLock::new();
+    PROXY
+        .get_or_init(|| {
+            let from_env = proxy_from_env();
+            let source = if from_env.is_some() { "env" } else { "system" };
+            let found = from_env.or_else(proxy_from_system);
+            crate::logbook::event(
+                "http_proxy",
+                serde_json::json!({
+                    "configured": found.is_some(),
+                    "source": if found.is_some() { source } else { "none" },
+                }),
+            );
+            found
+        })
+        .as_deref()
+}
+
+fn agent(seconds: u64, proxy: Option<&str>) -> ureq::Agent {
+    let mut builder = ureq::AgentBuilder::new()
+        .redirects(0)
+        .timeout(Duration::from_secs(seconds));
+    if let Some(proxy) = proxy.and_then(|p| ureq::Proxy::new(p).ok()) {
+        builder = builder.proxy(proxy);
+    }
+    builder.build()
+}
+
+/// `ureq::Error` is large; box it so the closure stays cheap to match on.
+fn send_with_body(request: ureq::Request, body: &[u8]) -> Result<ureq::Response, Box<ureq::Error>> {
+    let result = if body.is_empty() {
+        request.call()
+    } else {
+        request.send_bytes(body)
+    };
+    result.map_err(Box::new)
+}
 pub async fn raw(r: Request, seconds: u64) -> Result<Response, ApiError> {
     let (tx, rx) = tokio::sync::oneshot::channel();
     std::thread::spawn(move || {
         let result = (|| {
-            let agent = ureq::AgentBuilder::new()
-                .redirects(0)
-                .timeout(Duration::from_secs(seconds))
-                .build();
-            let mut q = agent.request(&r.method, &r.url);
+            let proxy = proxy_url();
+            let mut q = agent(seconds, proxy).request(&r.method, &r.url);
             for (n, v) in &r.headers {
                 q = q.set(n, v);
             }
-            let resp = match if r.body.is_empty() {
-                q.call()
-            } else {
-                q.send_bytes(&r.body)
-            } {
+            let resp = match send_with_body(q, &r.body) {
                 Ok(v) => v,
-                Err(ureq::Error::Status(_, v)) => v,
-                Err(_) => return Err(ApiError::Network("request failed".into())),
+                Err(first) => match *first {
+                    ureq::Error::Status(_, v) => v,
+                    // A stale proxy is common on Windows; retry the same
+                    // request directly before reporting a network failure.
+                    first if proxy.is_some() => {
+                        let mut direct = agent(seconds, None).request(&r.method, &r.url);
+                        for (n, v) in &r.headers {
+                            direct = direct.set(n, v);
+                        }
+                        match send_with_body(direct, &r.body) {
+                            Ok(v) => v,
+                            Err(second) => match *second {
+                                ureq::Error::Status(_, v) => v,
+                                second => {
+                                    return Err(ApiError::Network(format!(
+                                        "request failed via proxy ({first}) and directly ({second})"
+                                    )));
+                                }
+                            },
+                        }
+                    }
+                    other => {
+                        return Err(ApiError::Network(format!("request failed: {other}")));
+                    }
+                },
             };
             let status = resp.status();
             let retry_after = resp.header("Retry-After").and_then(|s| s.parse().ok());
