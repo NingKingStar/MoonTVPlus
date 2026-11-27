@@ -3721,10 +3721,14 @@ fn switch_to_backup_source(message: &str) -> bool {
         }),
     );
 
-    if !next.episodes.is_empty() {
+    if next.episodes.iter().any(|url| !url.trim().is_empty()) {
         start_playback_mode(&next, episode, portrait);
         let mut switched = player().get();
-        if switched.trace.as_ref().map(|trace| trace.source.as_str()) == Some(next.source.as_str())
+        if switched
+            .trace
+            .as_ref()
+            .is_some_and(|trace| trace.source == next.source)
+            && !switched.url().trim().is_empty()
         {
             switched.fallback_tried = tried;
             switched.fallback_error = first_error.clone();
@@ -3790,7 +3794,7 @@ fn switch_to_backup_source(message: &str) -> bool {
                 return;
             }
             match fetched {
-                Ok(full) if !full.episodes.is_empty() => {
+                Ok(full) if full.episodes.iter().any(|url| !url.trim().is_empty()) => {
                     start_playback_mode(&full, episode, portrait);
                     let mut state = player().get();
                     state.fallback_tried = tried;
