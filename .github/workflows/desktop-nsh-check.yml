@@ -1,0 +1,70 @@
+# Desktop NSH validation only. This workflow never deploys, never reads
+# production secrets and never touches the server, database or migrations.
+# It is separate from the Cloudflare deploy workflow on purpose: a desktop
+# change must not be able to reach a production deployment path.
+name: Desktop NSH checks
+
+on:
+  pull_request:
+    paths:
+      - 'apps/desktop-nsh/**'
+      - '.github/workflows/desktop-nsh-check.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'apps/desktop-nsh/**'
+      - '.github/workflows/desktop-nsh-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-nsh-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Windows x64 build and tests
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: apps/desktop-nsh
+    env:
+      CARGO_TERM_COLOR: always
+      # Keep the job offline: the live contract test is skipped without these.
+      MOONTV_CONTRACT_BASE: ''
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.100.0
+          components: rustfmt, clippy
+
+      - name: Cache cargo and target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/desktop-nsh/target
+          key: desktop-nsh-${{ runner.os }}-${{ hashFiles('apps/desktop-nsh/Cargo.lock') }}
+          restore-keys: |
+            desktop-nsh-${{ runner.os }}-
+
+      - name: Format
+        run: cargo fmt --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Unit tests
+        run: cargo test
+
+      - name: Release build
+        run: cargo build --release

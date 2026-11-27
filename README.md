@@ -11,7 +11,7 @@
 ![Next.js](https://img.shields.io/badge/Next.js-14-000?logo=nextdotjs)
 ![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3-38bdf8?logo=tailwindcss)
 ![TypeScript](https://img.shields.io/badge/TypeScript-4.x-3178c6?logo=typescript)
-![License](https://img.shields.io/badge/License-MIT-green)
+![License](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey)
 ![Docker Ready](https://img.shields.io/badge/Docker-ready-blue?logo=docker)
 
 </div>
@@ -685,13 +685,15 @@ NEXT_PUBLIC_VOICE_CHAT_STRATEGY 选项解释：
 
 ## License
 
-[MIT](LICENSE) © 2025 MoonTV & Contributors
+[CC BY-NC-SA 4.0](LICENSE) © 2025 MoonTV & Contributors
+
+上游在 2025-08-26 把 `LICENSE` 从 MIT 换成了 CC BY-NC-SA 4.0（提交 `7db7176b`），但 README 的徽章与本段文案一直没跟着改。这里以 `LICENSE` 文件为准：允许署名使用、非商业使用与相同方式共享；**不提供商业使用许可**，修改后再分发需沿用同样许可。
 
 ## 上游与许可
 
 - 上游项目：[Happier-X/MoonTVPlus](https://github.com/Happier-X/MoonTVPlus)。本仓库（[NingKingStar/MoonTVPlus](https://github.com/NingKingStar/MoonTVPlus)）是它的自用二次开发分支，历史提交与版权归原作者及贡献者所有。
 - 更早的血统：MoonTV（[LunaTV](https://github.com/MoonTechLab/LunaTV)）与 [LibreTV](https://github.com/LibreSpark/LibreTV)。
-- 许可：仓库中的 `LICENSE` 文件是 **CC BY-NC-SA 4.0**（署名—非商业性使用—相同方式共享），本仓库原样保留，未删除、未替换任何上游署名。上游历史 README 曾以 MIT 标注，两者的不一致属于上游遗留问题，如需变更授权只能由版权所有者决定。
+- 许可：仓库中的 `LICENSE` 文件是 **CC BY-NC-SA 4.0**（署名—非商业性使用—相同方式共享），本仓库原样保留，未删除、未替换任何上游署名。上游历史 README 曾以 MIT 标注；本仓库已把 README 的许可裸章与 License 段同步为 CC BY-NC-SA 4.0，两者不再矛盾。如需变更授权只能由版权所有者决定。
 - 本仓库只提供代码与自部署方式，**不代表上游**，也不提供任何官方服务或公共实例。
 - 「生态应用」里的 MoonTVPlus-PC、Selene、OrionTV、浏览器扩展都由上游作者构建发布，属于**上游第三方构建**，链接仍指向上游仓库；本仓库不重新发布这些客户端。
 
