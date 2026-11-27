@@ -8,7 +8,7 @@
 - 当前平台：W=普通网页，T=WebTV/Android TV 浏览器壳，A=同仓 Android KMP，N=同仓 Android NSH，K=Compose Desktop，S=服务端，O=运维。平台只表示找到了该侧实现入口，不保证其他端具有同等细节。未逐项验证 A/N 的功能一律不自动标上。
 - 状态只评估目标 **Rust + NSH 桌面端及其配套交付**：M=已原生本地模拟（有参考工程演示/本机证据，真实待联调）；R=真实待联调（有参考适配代码，未实测真实原仓）；U=未做。M/R 都不算真实兼容通过。源码静态存在也不等于上游实际在线可用。
 - P0=首版基础与真实接口播放闭环；P1=主要日常体验；P2=完整功能等值（包含管理与运维）；P3=媒体/设备重扩展。优先级仅代表先后，**不是删除范围**。`条件` 表示需要依赖或范围选择，不能当作永久延期。
-- `契约✓(隔离实例)` 表示用本仓服务端代码 + 一次性 SQLite 库 + 受控片源在 127.0.0.1 上跑过客户端真实请求链（P0 见 apps/desktop-nsh/docs/p0-contract-2026-11-24.md；P1 搜索增量/建议历史/豆瓣分类/每日放送见 apps/desktop-nsh/docs/p1-contract-2026-11-24.md）。它不是生产实例验收，状态字母仍按 M/R/U 原义保留。
+- `契约✓(隔离实例)` 表示用本仓服务端代码 + 一次性 SQLite 库 + 受控片源在 127.0.0.1 上跑过客户端真实请求链（P0 见 apps/desktop-nsh/docs/p0-contract-2026-11-24.md；P1 搜索增量/建议历史/豆瓣分类/每日放送见 apps/desktop-nsh/docs/p1-contract-2026-11-24.md；P1c 单源/短剧见 apps/desktop-nsh/docs/p1c-contract-2026-11-27.md）。它不是生产实例验收，状态字母仍按 M/R/U 原义保留。
 - 证据中的路径均相对本仓根目录，冒号后为上述 SHA 的行号；参考工程用绝对路径。代码优先于 README；行号可与基线索引哈希复查。每项验收是将来应达到的结果，本轮没有执行这些动作。
 - 表中“复用”指调用/保留服务端契约，NSH 交互与实现仍需新写；不意味着复制旧网页/Android 源码。复杂度 S/M/L/XL 是相对规模，不承诺工期。
 
@@ -42,7 +42,7 @@
 |NSH-DIS-06|即将上映、TMDB 趋势、海报/剧照与预告|src/app/api/tmdb/upcoming/route.ts:15; src/app/api/tmdb/trending/route.ts:19; src/app/api/tmdb/videos/route.ts:21; src/components/TrailerPickerDialog.tsx:1|W/A/S|即将上映模块、预告选择/打开、图集查看|已有 TMDB 系列路由；媒体直链/外部链接分别处理|TMDB key/代理、DET-03|无 key 时说明不可用；预告非媒体 URL 不误当可播媒体|P1 / U / L，条件|
 |NSH-DIS-07|自定义分类；按配置 type/query 导航|src/components/DoubanCustomSelector.tsx:1; src/lib/admin.types.ts:107; src/app/douban/page.tsx:652|W/S|原生动态导航、选择与内容加载|已有 CustomCategories/搜索；配置由 ADM-09 维护|DIS-02、ADM-09|增删/禁用后的配置在重新拉取后正确出现，不硬编码栏目|P2 / U / M|
 |NSH-DIS-08|脚本高级推荐：选脚本、分页、进入详情|src/app/advanced-recommendation/page.tsx:40; src/app/api/advanced-recommendation/videos/route.ts:12|W/S|原生脚本源列表、分页/空态、详情跳转|已有 enabled scripts/getSources/recommend；保留脚本在服务端执行|SRC-04|有 recommend hook 可列出作品；hook 失败只影响该脚本|P2 / U / M，条件|
-|NSH-DIS-09|单源浏览：选源、分类层级、搜索、分页|src/app/source-search/page.tsx:212; src/app/api/source-search/categories/route.ts:1; src/lib/category-tree.ts:1|W/S|原生源选择/分类树/面包屑、源内搜索|已有 source-search 四路由，含 special 标记与脚本|AUTH-10、SRC-01|源切换清理旧分类/分页；未授权源不能读取；脚本源分类可降级|P1 / U / L|
+|NSH-DIS-09|单源浏览：选源、分类层级、搜索、分页|src/app/source-search/page.tsx:212; src/app/api/source-search/categories/route.ts:1; src/lib/category-tree.ts:1|W/S|原生源选择/分类树/面包屑、源内搜索|已有 source-search 四路由，含 special 标记与脚本|AUTH-10、SRC-01|源切换清理旧分类/分页；未授权源不能读取；脚本源分类可降级|P1 / R / L，契约✓(隔离实例，P1c)；真实实例、special/脚本源分类未验|
 |NSH-SRC-01|多源聚合搜索与普通结果视图；取消/重试|src/app/api/search/route.ts:19; src/components/SearchPageClient.tsx:406; C:/project/MoonTVPlus-NSH/src/api.rs:259|W/T/A/N/K/S|原生搜索、结果分组、空/部分失败/取消态|已有 search JSON；标题+年+类型聚合要按字段保真|AUTH-10、源配置|真实实例返回多个源并可点播；同名不同年不误合并；迟到请求不覆盖新查询| P0 / R / L，契约✓(隔离实例) |
 |NSH-SRC-02|实时分源搜索进度、源错误、全部完成|src/app/api/search/ws/route.ts:85; src/app/api/search/ws/route.ts:159; src/components/SearchPageClient.tsx:1253|W/A/N/S|原生 SSE 解析、增量结果、取消、断流与降级|已有 /search/ws 实际是 text/event-stream，非 WebSocket；start/source_result/source_error/complete|SRC-01、流式 HTTP|首源到达即出现；分包中文/多行事件正确；单源超时不吞掉已到结果| P1 / R / L，契约✓(隔离实例，P1)；客户端 SSE/增量/降级已验，真实实例未验 |
 |NSH-SRC-03|搜索建议/热词、搜索历史增删清空|src/app/api/search/suggestions/route.ts:13; src/app/api/searchhistory/route.ts:17; src/components/SearchSuggestions.tsx:1|W/T/A/S|原生建议列表、防抖、历史、清空确认|已有 suggestions、searchhistory GET/POST/DELETE|AUTH-02|输入变化不显示过时建议；只删除指定测试关键词；重启与其他端一致|P1 / R / M，契约✓(隔离实例，P1)；真实实例未验|
@@ -56,7 +56,7 @@
 
 |编号|用户能力 / 细分动作|证据文件:行|现有平台|NSH 新写交互/实现|服务端现有/新增能力|依赖|验收结果标准|优先级 / 状态 / 复杂度|
 |---|---|---|---|---|---|---|---|---|
-|NSH-DJS-01|短剧片源选择、父子分类/平铺分类、分页、浏览恢复、短剧推荐|src/app/duanju/page.tsx:192; src/app/duanju/page.tsx:241; src/app/duanju/page.tsx:348; src/app/api/duanju/recommends/route.ts:82|W/S|原生短剧导航、分类、加载/空/失败状态、分页和返回位置恢复|现有 sources/categories/videos/recommends；推荐取首个配置源的分类结果，不声称个性化算法|AUTH-10、DIS-09、ADM-06|真实短剧源切换不串页；父子分类和页码正确；无源/超时可恢复；推荐失败不伪装成功|P1 / U / L|
+|NSH-DJS-01|短剧片源选择、父子分类/平铺分类、分页、浏览恢复、短剧推荐|src/app/duanju/page.tsx:192; src/app/duanju/page.tsx:241; src/app/duanju/page.tsx:348; src/app/api/duanju/recommends/route.ts:82|W/S|原生短剧导航、分类、加载/空/失败状态、分页和返回位置恢复|现有 sources/categories/videos/recommends；推荐取首个配置源的分类结果，不声称个性化算法|AUTH-10、DIS-09、ADM-06|真实短剧源切换不串页；父子分类和页码正确；无源/超时可恢复；推荐失败不伪装成功|P1 / R / L，契约✓(隔离实例，P1c)；列表/分类/详情/竖屏连播/推荐已验，真实短剧源与播后滚动恢复未验|
 |NSH-DJS-02|独立竖屏连播、滚轮/键盘/拖动切集、选集、倍速、预播、换源测速、收藏续播、批量下载、切普通播放器|src/app/duanju/play/page.tsx:744; src/app/duanju/play/page.tsx:906; src/app/duanju/play/page.tsx:1178; src/app/duanju/play/page.tsx:1376; src/app/duanju/play/page.tsx:1403; src/app/duanju/play/page.tsx:1584; src/components/UserMenu.tsx:1|W/S|NSH 竖屏媒体布局与焦点/手势；新写活动/相邻集资源管理；保留关闭竖屏偏好；历史标记 is_duanju|现有 source-detail/search、收藏/记录；复用服务端代理，下载按 DL 合同|DJS-01、PLY-01/02/05、LIB-01/03、CFG-01、DL-01/02|切集正确保存一基集号/秒进度；只当前集发声；失败可重试/换源；横竖模式续播一致；下载遵守同一任务状态机|P2 / U / XL|
 
 ## 详情与点播闭环

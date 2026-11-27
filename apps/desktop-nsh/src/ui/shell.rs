@@ -63,6 +63,8 @@ pub fn Shell() -> impl IntoElement {
                                         Route::Connect => pages::connect_page(),
                                         Route::Home => pages::home_page(),
                                         Route::Discover => pages::discover_page(),
+                                        Route::Sources => pages::source_browse_page(),
+                                        Route::Duanju => pages::duanju_page(),
                                         Route::Search => pages::search_page(),
                                         Route::Detail(_) => pages::detail_page(),
                                         Route::Favorites => pages::favorites_page(),
@@ -105,6 +107,8 @@ fn sidebar() -> AnyElement {
                 )
                 .child(nav_row("home", "首页", Icon::Home))
                 .child(nav_row("discover", "发现", Icon::Grid))
+                .child(nav_row("sources", "单源", Icon::Server))
+                .child(nav_row("duanju", "短剧", Icon::Film))
                 .child(nav_row("favorites", "收藏", Icon::Bookmark))
                 .child(nav_row("history", "历史", Icon::History)),
         )
@@ -188,12 +192,11 @@ fn nav_row(key: &'static str, label: &'static str, icon_name: Icon) -> AnyElemen
         .style_when(active, |s| s.bg(RAISED))
         .hover(|s| s.bg(HOVER))
         .active(|s| s.opacity(0.8))
-        .on_press(move || {
-            if key == "discover" {
-                state::open_discover();
-            } else {
-                state::go(route_for_key(key));
-            }
+        .on_press(move || match key {
+            "discover" => state::open_discover(),
+            "sources" => state::open_sources(),
+            "duanju" => state::open_duanju(),
+            _ => state::go(route_for_key(key)),
         })
         .child(icon(
             icon_name,
@@ -232,6 +235,8 @@ fn route_for_key(key: &str) -> Route {
     match key {
         "home" => Route::Home,
         "discover" => Route::Discover,
+        "sources" => Route::Sources,
+        "duanju" => Route::Duanju,
         "favorites" => Route::Favorites,
         "history" => Route::History,
         _ => Route::Settings,

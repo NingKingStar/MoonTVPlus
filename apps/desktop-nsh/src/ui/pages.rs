@@ -7,7 +7,11 @@ use crate::{
     demo,
     discover::{self, AnimeTab, Item, MediaKind},
     model::{Candidate, FavoriteEntry, ProgressEntry, Work, format_time, percent_label},
-    state::{self, DiscoverState, LoadPhase, Route, SearchState, ToastTone},
+    source_browse,
+    state::{
+        self, DiscoverState, DuanjuState, LoadPhase, Route, SearchState, SourceBrowseState,
+        ToastTone,
+    },
     ui::{
         icons::{Icon, icon},
         theme::*,
@@ -830,6 +834,835 @@ fn hero_card(entry: &ProgressEntry) -> AnyElement {
                         .text_color(FAINT),
                 ),
         )
+        .into_element()
+}
+
+// ----------------------------- source browsing --------------------------
+
+fn browse_work(item: &source_browse::Item) -> Work {
+    Work {
+        title: item.title.clone(),
+        year: item.year.clone(),
+        poster: item.poster.clone(),
+        desc: item.desc.clone(),
+        genres: item
+            .type_name
+            .split(['/', ',', '，', '、'])
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned)
+            .take(2)
+            .collect(),
+        candidates: vec![Candidate {
+            source: item.source.clone(),
+            id: item.id.clone(),
+            source_name: item.source_name.clone(),
+            title: item.title.clone(),
+            year: item.year.clone(),
+            poster: item.poster.clone(),
+            episodes: item.episodes.clone(),
+            episode_titles: item.episode_titles.clone(),
+            ..Candidate::default()
+        }],
+        weight: 0,
+    }
+}
+
+fn browse_card(item: source_browse::Item, duanju: bool) -> AnyElement {
+    let work = browse_work(&item);
+    let meta = if item.year.is_empty() {
+        item.source_name.clone()
+    } else {
+        format!("{} · {}", item.year, item.source_name)
+    };
+    let episodes = item.episodes.len();
+    let open = item.clone();
+    view()
+        .gap(px(7.0))
+        .rounded(px(RADIUS_CARD))
+        .focusable(true)
+        .role(AccessibilityRole::Button)
+        .label(format!("{}，{}", item.title, meta))
+        .hover(|s| s.opacity(0.94))
+        .active(|s| s.opacity(0.82))
+        .on_press(move || {
+            if duanju {
+                state::open_duanju_item(&open);
+            } else {
+                state::open_source_item(&open);
+            }
+        })
+        .child(poster(&work, true))
+        .child(
+            view()
+                .px(px(2.0))
+                .gap(px(3.0))
+                .child(
+                    text(item.title.clone())
+                        .text_size(px(13.5))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(TEXT)
+                        .number_of_lines(1),
+                )
+                .child(
+                    view()
+                        .flex_row()
+                        .items_center()
+                        .gap(px(6.0))
+                        .child(
+                            text(meta)
+                                .text_size(px(11.0))
+                                .text_color(MUTED)
+                                .number_of_lines(1),
+                        )
+                        .children((episodes > 0).then(|| {
+                            text(format!("{episodes} 集"))
+                                .text_size(px(10.0))
+                                .text_color(FAINT)
+                        }))
+                        .children(duanju.then(|| chip("竖屏", ACCENT, DEMO_TINT))),
+                )
+                .children((!item.remarks.is_empty()).then(|| {
+                    text(item.remarks.clone())
+                        .text_size(px(10.0))
+                        .text_color(FAINT)
+                        .number_of_lines(1)
+                })),
+        )
+        .into_element()
+}
+
+fn browse_grid(items: Vec<source_browse::Item>, duanju: bool) -> AnyElement {
+    let count = columns(180.0, 8);
+    dynamic(move || {
+        view()
+            .grid()
+            .grid_cols(count.get())
+            .gap(px(14.0))
+            .children(items.iter().cloned().map(|item| browse_card(item, duanju)))
+            .into_element()
+    })
+}
+
+fn site_chips(
+    sites: Vec<(String, String)>,
+    active: String,
+    on_select: impl Fn(String) + Clone + 'static,
+) -> AnyElement {
+    view()
+        .flex_row()
+        .flex_wrap()
+        .gap(px(6.0))
+        .children(sites.into_iter().map(|(key, name)| {
+            let selected = key == active;
+            let action = on_select.clone();
+            let target = key.clone();
+            view()
+                .h(px(30.0))
+                .px(px(11.0))
+                .rounded_full()
+                .bg(if selected { DEMO_TINT } else { RAISED })
+                .border_1()
+                .border_color(if selected {
+                    alpha(0xe9b872, 0.38)
+                } else {
+                    BORDER
+                })
+                .items_center()
+                .justify_center()
+                .focusable(true)
+                .role(AccessibilityRole::Button)
+                .label(name.clone())
+                .accessibility_state(AccessibilityState {
+                    selected,
+                    ..AccessibilityState::default()
+                })
+                .hover(|s| s.bg(HOVER))
+                .on_press(move || action(target.clone()))
+                .child(
+                    text(name)
+                        .text_size(px(11.5))
+                        .font_weight(if selected {
+                            FontWeight::SEMIBOLD
+                        } else {
+                            FontWeight::MEDIUM
+                        })
+                        .text_color(if selected { ACCENT } else { MUTED })
+                        .number_of_lines(1),
+                )
+                .into_element()
+        }))
+        .into_element()
+}
+
+fn category_chips(
+    categories: Vec<source_browse::Category>,
+    parent: String,
+    category: String,
+    on_parent: impl Fn(String) + Clone + 'static,
+    on_category: impl Fn(String) + Clone + 'static,
+) -> AnyElement {
+    let hierarchical = source_browse::is_hierarchical(&categories);
+    let parents = if hierarchical {
+        source_browse::parents(&categories)
+    } else {
+        Vec::new()
+    };
+    let multi_parent = parents.len() > 1;
+    let flat = if !hierarchical {
+        categories.clone()
+    } else if parents.len() == 1 {
+        let mut list = parents.clone();
+        list.extend(source_browse::children(&categories, &parents[0].id));
+        list
+    } else {
+        Vec::new()
+    };
+    let children = if multi_parent {
+        source_browse::children(&categories, &parent)
+    } else {
+        Vec::new()
+    };
+    let parent_name = categories
+        .iter()
+        .find(|item| item.id == parent)
+        .map(|item| item.name.clone())
+        .unwrap_or_default();
+    let category_name = categories
+        .iter()
+        .find(|item| item.id == category)
+        .map(|item| item.name.clone())
+        .unwrap_or_default();
+    let breadcrumb = if parent_name.is_empty() {
+        category_name.clone()
+    } else if category_name.is_empty() || category_name == parent_name {
+        parent_name.clone()
+    } else {
+        format!("{parent_name} / {category_name}")
+    };
+    view()
+        .gap(px(7.0))
+        .children((!breadcrumb.is_empty()).then(|| {
+            text(breadcrumb)
+                .text_size(px(11.0))
+                .text_color(FAINT)
+                .number_of_lines(1)
+        }))
+        .children((!parents.is_empty()).then(|| {
+            view()
+                .flex_row()
+                .flex_wrap()
+                .gap(px(5.0))
+                .children(parents.into_iter().map(|item| {
+                    let active = item.id == parent;
+                    let action = on_parent.clone();
+                    let target = item.id.clone();
+                    category_chip(item.name, active, move || action(target.clone()))
+                }))
+        }))
+        .children((!children.is_empty()).then(|| {
+            view()
+                .flex_row()
+                .flex_wrap()
+                .gap(px(5.0))
+                .children(children.into_iter().map(|item| {
+                    let active = item.id == category;
+                    let action = on_category.clone();
+                    let target = item.id.clone();
+                    category_chip(item.name, active, move || action(target.clone()))
+                }))
+        }))
+        .children((!flat.is_empty()).then(|| {
+            view()
+                .flex_row()
+                .flex_wrap()
+                .gap(px(5.0))
+                .children(flat.into_iter().map(|item| {
+                    let active = item.id == category;
+                    let action = on_category.clone();
+                    let target = item.id.clone();
+                    category_chip(item.name, active, move || action(target.clone()))
+                }))
+        }))
+        .into_element()
+}
+
+fn category_chip(label: String, active: bool, on_press: impl Fn() + 'static) -> AnyElement {
+    view()
+        .h(px(27.0))
+        .px(px(9.0))
+        .rounded_full()
+        .bg(if active { RAISED } else { alpha(0x000000, 0.0) })
+        .border_1()
+        .border_color(if active {
+            alpha(0xe9b872, 0.42)
+        } else {
+            BORDER
+        })
+        .items_center()
+        .justify_center()
+        .focusable(true)
+        .role(AccessibilityRole::Button)
+        .label(label.clone())
+        .accessibility_state(AccessibilityState {
+            selected: active,
+            ..AccessibilityState::default()
+        })
+        .hover(|s| s.bg(HOVER))
+        .on_press(on_press)
+        .child(
+            text(label)
+                .text_size(px(11.0))
+                .font_weight(if active {
+                    FontWeight::SEMIBOLD
+                } else {
+                    FontWeight::MEDIUM
+                })
+                .text_color(if active { TEXT } else { MUTED })
+                .number_of_lines(1),
+        )
+        .into_element()
+}
+
+fn pagination_footer(
+    page: usize,
+    page_count: usize,
+    total: usize,
+    loading: bool,
+    on_more: impl Fn() + 'static,
+    on_retry: impl Fn() + 'static,
+) -> AnyElement {
+    view()
+        .flex_row()
+        .flex_wrap()
+        .items_center()
+        .justify_between()
+        .gap_3()
+        .child(
+            text(format!(
+                "第 {} / {} 页 · {} 条{}",
+                page.max(1),
+                page_count.max(page),
+                total,
+                if page < page_count {
+                    ""
+                } else {
+                    " · 已到末页"
+                }
+            ))
+            .text_size(px(10.5))
+            .text_color(FAINT),
+        )
+        .child(
+            view()
+                .flex_row()
+                .items_center()
+                .gap(px(8.0))
+                .children(loading.then(|| {
+                    text("正在加载下一页…")
+                        .text_size(px(11.0))
+                        .text_color(MUTED)
+                }))
+                .children(
+                    (page < page_count && !loading)
+                        .then(|| button("加载更多", Btn::Secondary, on_more)),
+                )
+                .child(button("刷新列表", Btn::Ghost, on_retry)),
+        )
+        .into_element()
+}
+
+pub fn source_browse_page() -> AnyElement {
+    let browse = state::source_browse_state();
+    let session = state::session();
+    let demo_mode = session.get().demo();
+    let connected = session.get().connected();
+    let input = signal(state::source_browse_state().get().search_input);
+    page_scroll(
+        view()
+            .gap(px(14.0))
+            .child(page_head(
+                "单源浏览",
+                "按片源分类浏览；切源会清空旧分类与分页，源内搜索只查当前源".to_string(),
+                vec![
+                    button("刷新源列表", Btn::Ghost, state::source_refresh_sites),
+                    demo_badge_if(demo_mode),
+                ],
+            ))
+            .children((!connected && !demo_mode).then(|| {
+                empty_state(
+                    Icon::Server,
+                    "需要连接实例",
+                    "单源浏览使用实例已授权的片源；演示模式没有额外片源。",
+                    Some(button("去连接", Btn::Primary, || {
+                        state::go(Route::Connect)
+                    })),
+                )
+            }))
+            .children((connected && !demo_mode).then(move || {
+                view()
+                    .gap(px(12.0))
+                    .child(dynamic(move || source_browse_panel(&browse)))
+                    .child(source_search_row(input))
+                    .child(dynamic(move || source_search_status(&browse, input)))
+                    .child(dynamic(move || source_list_body(&browse)))
+                    .into_element()
+            }))
+            .children(demo_mode.then(|| {
+                empty_state(
+                    Icon::Server,
+                    "演示模式没有单源浏览",
+                    "演示片单是受控的虚构作品；单源分类需要实例的已授权采集源。",
+                    Some(button("回到搜索", Btn::Primary, state::open_search)),
+                )
+            }))
+            .into_element(),
+    )
+}
+
+fn source_browse_panel(browse: &Signal<SourceBrowseState>) -> AnyElement {
+    let state_now = browse.get();
+    view()
+        .p(px(12.0))
+        .rounded(px(RADIUS_CARD))
+        .bg(SURFACE)
+        .border_1()
+        .border_color(BORDER)
+        .gap(px(9.0))
+        .child(
+            view()
+                .flex_row()
+                .items_center()
+                .gap(px(8.0))
+                .child(
+                    text("片源")
+                        .text_size(px(11.0))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(FAINT),
+                )
+                .children((state_now.sites_phase == LoadPhase::Loading).then(|| {
+                    text("正在读取可用片源…")
+                        .text_size(px(11.0))
+                        .text_color(MUTED)
+                }))
+                .children((!state_now.sites_error.is_empty()).then(|| {
+                    text(state_now.sites_error.clone())
+                        .text_size(px(11.0))
+                        .text_color(DANGER)
+                }))
+                .children((!state_now.sites.is_empty()).then(|| {
+                    text(format!("{} 个可用源", state_now.sites.len()))
+                        .text_size(px(10.5))
+                        .text_color(FAINT)
+                })),
+        )
+        .children((!state_now.sites.is_empty()).then(|| {
+            site_chips(
+                state_now
+                    .sites
+                    .iter()
+                    .map(|site| (site.key.clone(), site.name.clone()))
+                    .collect(),
+                state_now.source.clone(),
+                state::source_select,
+            )
+        }))
+        .children((!state_now.categories.is_empty()).then(|| {
+            category_chips(
+                state_now.categories.clone(),
+                state_now.parent.clone(),
+                state_now.category.clone(),
+                state::source_set_parent,
+                state::source_set_category,
+            )
+        }))
+        .children((state_now.sites_phase == LoadPhase::Error).then(|| {
+            view()
+                .flex_row()
+                .items_center()
+                .gap(px(8.0))
+                .child(button("重试", Btn::Secondary, state::source_retry))
+                .child(button(
+                    "刷新源列表",
+                    Btn::Ghost,
+                    state::source_refresh_sites,
+                ))
+        }))
+        .into_element()
+}
+
+fn source_search_row(draft: Signal<String>) -> AnyElement {
+    let submit = {
+        move || {
+            state::source_search_input(draft.get());
+            state::source_run_search();
+        }
+    };
+    view()
+        .flex_row()
+        .flex_wrap()
+        .items_center()
+        .gap(px(7.0))
+        .child(
+            input()
+                .value(move || draft.get())
+                .placeholder("在这个源内搜索片名…")
+                .placeholder_color(FAINT)
+                .text_color(TEXT)
+                .text_size(px(12.0))
+                .h(px(34.0))
+                .flex_1()
+                .min_w(px(200.0))
+                .px(px(10.0))
+                .rounded(px(8.0))
+                .bg(RAISED)
+                .border_1()
+                .border_color(BORDER)
+                .focus(|s| s.border_color(alpha(0xe9b872, 0.55)))
+                .on_change(move |value: &str| draft.set(value.to_owned()))
+                .on_submit(move |_: &str| submit()),
+        )
+        .child(button("源内搜索", Btn::Secondary, submit))
+        .into_element()
+}
+
+fn source_search_status(browse: &Signal<SourceBrowseState>, input: Signal<String>) -> AnyElement {
+    let state_now = browse.get();
+    if !state_now.searching {
+        return view().into_element();
+    }
+    view()
+        .flex_row()
+        .flex_wrap()
+        .items_center()
+        .gap(px(8.0))
+        .child(
+            text(format!("只搜索当前源：{}", state_now.keyword))
+                .text_size(px(11.0))
+                .text_color(MUTED),
+        )
+        .child(chip("源内搜索", ACCENT, DEMO_TINT))
+        .child(button("返回浏览", Btn::Ghost, move || {
+            input.set(String::new());
+            state::source_back_browse();
+        }))
+        .into_element()
+}
+
+fn source_list_body(browse: &Signal<SourceBrowseState>) -> AnyElement {
+    let state_now = browse.get();
+    if state_now.sites_phase == LoadPhase::Ready && state_now.sites.is_empty() {
+        return empty_state(
+            Icon::Server,
+            "当前账号没有可用片源",
+            "管理员没有为这个账号启用采集源，或源全部被禁用；刷新源列表后重试。",
+            Some(button(
+                "刷新源列表",
+                Btn::Secondary,
+                state::source_refresh_sites,
+            )),
+        );
+    }
+    if state_now.phase == LoadPhase::Error {
+        return view()
+            .gap(px(10.0))
+            .child(empty_state(
+                Icon::Alert,
+                "片源浏览没有完成",
+                state_now.error.clone(),
+                Some(button("重试", Btn::Primary, state::source_retry)),
+            ))
+            .into_element();
+    }
+    if (state_now.phase == LoadPhase::Idle || state_now.phase == LoadPhase::Loading)
+        && state_now.items.is_empty()
+    {
+        return view()
+            .grid()
+            .grid_cols(5)
+            .gap(px(14.0))
+            .children((0..10).map(|_| skeleton_card()))
+            .into_element();
+    }
+    if state_now.categories.is_empty() {
+        return empty_state(
+            Icon::Server,
+            "这个源没有可用分类",
+            if state_now.notice.is_empty() {
+                "源站没有返回分类列表；它可能暂时不可用，换一个源或稍后重试。".to_string()
+            } else {
+                state_now.notice.clone()
+            },
+            Some(button("重试", Btn::Secondary, state::source_retry)),
+        );
+    }
+    if state_now.items.is_empty() {
+        return empty_state(
+            Icon::Search,
+            if state_now.searching {
+                "这个源内没有找到匹配内容"
+            } else {
+                "这个分类没有条目"
+            },
+            if state_now.notice.is_empty() {
+                "这个源可能暂时不可用；换一个分类或源后重试。".to_string()
+            } else {
+                state_now.notice.clone()
+            },
+            Some(button("重试", Btn::Secondary, state::source_retry)),
+        );
+    }
+    view()
+        .gap(px(12.0))
+        .children(
+            (!state_now.notice.is_empty()).then(|| notice_banner_text(&state_now.notice, false)),
+        )
+        .child(browse_grid(state_now.items.clone(), false))
+        .child(pagination_footer(
+            state_now.page,
+            state_now.page_count,
+            state_now.total,
+            state_now.loading_more,
+            state::source_more,
+            || {
+                state::source_retry();
+            },
+        ))
+        .into_element()
+}
+
+// ------------------------------ short drama -----------------------------
+
+pub fn duanju_page() -> AnyElement {
+    let duanju = state::duanju_state();
+    let session = state::session();
+    let connected = session.get().connected();
+    let demo_mode = session.get().demo();
+    page_scroll(
+        view()
+            .gap(px(14.0))
+            .child(page_head(
+                "短剧",
+                "实例已授权的短剧采集源；分类来自源站，竖屏连播从详情进入".to_string(),
+                vec![
+                    button("刷新源列表", Btn::Ghost, state::duanju_refresh_sites),
+                    demo_badge_if(demo_mode),
+                ],
+            ))
+            .children((!connected && !demo_mode).then(|| {
+                empty_state(
+                    Icon::Play,
+                    "需要连接实例",
+                    "短剧列表来自实例配置的采集源；演示模式没有短剧片源。",
+                    Some(button("去连接", Btn::Primary, || {
+                        state::go(Route::Connect)
+                    })),
+                )
+            }))
+            .children((connected && !demo_mode).then(move || {
+                view()
+                    .gap(px(12.0))
+                    .child(dynamic(move || duanju_body(&duanju)))
+                    .into_element()
+            }))
+            .children(demo_mode.then(|| {
+                empty_state(
+                    Icon::Film,
+                    "演示模式没有短剧片源",
+                    "短剧列表与竖屏连播需要实例里已配置的短剧采集源。",
+                    Some(button("回到搜索", Btn::Primary, state::open_search)),
+                )
+            }))
+            .into_element(),
+    )
+}
+
+fn duanju_body(duanju: &Signal<DuanjuState>) -> AnyElement {
+    let state_now = duanju.get();
+    view()
+        .gap(px(12.0))
+        .child(
+            view()
+                .p(px(12.0))
+                .rounded(px(RADIUS_CARD))
+                .bg(SURFACE)
+                .border_1()
+                .border_color(BORDER)
+                .gap(px(9.0))
+                .child(
+                    view()
+                        .flex_row()
+                        .items_center()
+                        .gap(px(8.0))
+                        .child(
+                            text("短剧源")
+                                .text_size(px(11.0))
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .text_color(FAINT),
+                        )
+                        .children((state_now.sites_phase == LoadPhase::Loading).then(|| {
+                            text("正在筛选包含短剧分类的源…")
+                                .text_size(px(11.0))
+                                .text_color(MUTED)
+                        }))
+                        .children((!state_now.sites_error.is_empty()).then(|| {
+                            text(state_now.sites_error.clone())
+                                .text_size(px(11.0))
+                                .text_color(DANGER)
+                        })),
+                )
+                .children((!state_now.sites.is_empty()).then(|| {
+                    site_chips(
+                        state_now
+                            .sites
+                            .iter()
+                            .map(|site| (site.key.clone(), site.name.clone()))
+                            .collect(),
+                        state_now.source.clone(),
+                        state::duanju_select,
+                    )
+                }))
+                .children((!state_now.categories.is_empty()).then(|| {
+                    category_chips(
+                        state_now.categories.clone(),
+                        state_now.parent.clone(),
+                        state_now.category.clone(),
+                        state::duanju_set_parent,
+                        state::duanju_set_category,
+                    )
+                }))
+                .children(state_now.sites.is_empty().then(|| {
+                    text("当前配置没有包含短剧分类的采集源；添加短剧源后刷新。")
+                        .text_size(px(11.0))
+                        .text_color(MUTED)
+                })),
+        )
+        .child(duanju_recommend_section(&state_now))
+        .child(duanju_list_body(duanju))
+        .into_element()
+}
+
+fn duanju_recommend_section(state_now: &DuanjuState) -> AnyElement {
+    if state_now.recommends_phase == LoadPhase::Loading {
+        return view()
+            .gap(px(8.0))
+            .child(section_header(
+                "热播短剧",
+                Some("正在读取推荐…".to_string()),
+                None,
+            ))
+            .child(
+                view()
+                    .h(px(120.0))
+                    .w_full()
+                    .rounded(px(RADIUS_CARD))
+                    .bg(RAISED),
+            )
+            .into_element();
+    }
+    if state_now.recommends_phase == LoadPhase::Error {
+        return view()
+            .p(px(11.0))
+            .rounded(px(9.0))
+            .bg(DANGER_TINT)
+            .border_1()
+            .border_color(alpha(0xf07b7b, 0.3))
+            .flex_row()
+            .items_center()
+            .gap_3()
+            .child(
+                text(format!(
+                    "热播短剧没有加载成功：{}",
+                    state_now.recommends_error
+                ))
+                .flex_1()
+                .text_size(px(11.0))
+                .text_color(DANGER)
+                .number_of_lines(2),
+            )
+            .child(button("重试", Btn::Ghost, state::duanju_retry_recommends))
+            .into_element();
+    }
+    if state_now.recommends.is_empty() {
+        return view().into_element();
+    }
+    view()
+        .gap(px(10.0))
+        .child(section_header(
+            "热播短剧",
+            Some("来自第一个可用短剧源；失败不会伪装成空推荐".to_string()),
+            None,
+        ))
+        .child(browse_grid(
+            state_now.recommends.iter().take(6).cloned().collect(),
+            true,
+        ))
+        .into_element()
+}
+
+fn duanju_list_body(duanju: &Signal<DuanjuState>) -> AnyElement {
+    let state_now = duanju.get();
+    if state_now.sites_phase == LoadPhase::Ready && state_now.sites.is_empty() {
+        return empty_state(
+            Icon::Film,
+            "当前没有短剧采集源",
+            "实例里没有声明短剧分类的源；添加短剧源后刷新源列表。",
+            Some(button(
+                "刷新源列表",
+                Btn::Secondary,
+                state::duanju_refresh_sites,
+            )),
+        );
+    }
+    if state_now.phase == LoadPhase::Error {
+        return view()
+            .gap(px(10.0))
+            .child(empty_state(
+                Icon::Alert,
+                "短剧列表没有完成",
+                state_now.error.clone(),
+                Some(button("重试", Btn::Primary, state::duanju_retry)),
+            ))
+            .into_element();
+    }
+    if (state_now.phase == LoadPhase::Idle || state_now.phase == LoadPhase::Loading)
+        && state_now.items.is_empty()
+    {
+        return view()
+            .grid()
+            .grid_cols(5)
+            .gap(px(14.0))
+            .children((0..10).map(|_| skeleton_card()))
+            .into_element();
+    }
+    if state_now.items.is_empty() {
+        return empty_state(
+            Icon::Film,
+            "这个分类还没有短剧",
+            if state_now.notice.is_empty() {
+                "换一个分类或源；短剧源可能暂时不可用。".to_string()
+            } else {
+                state_now.notice.clone()
+            },
+            Some(button("重试", Btn::Secondary, state::duanju_retry)),
+        );
+    }
+    view()
+        .gap(px(12.0))
+        .children(
+            (!state_now.notice.is_empty()).then(|| notice_banner_text(&state_now.notice, false)),
+        )
+        .child(browse_grid(state_now.items.clone(), true))
+        .child(pagination_footer(
+            state_now.page,
+            state_now.page_count,
+            state_now.total,
+            state_now.loading_more,
+            state::duanju_more,
+            || {
+                state::duanju_retry();
+            },
+        ))
         .into_element()
 }
 
@@ -1992,6 +2825,7 @@ fn detail_body() -> AnyElement {
         ));
     };
     let key = candidate.key();
+    let duanju_mode = detail.get().duanju || source_browse::looks_like_duanju(&candidate.kind);
     let is_fav = state::library().get().is_favorite(&key);
     let progress = state::library()
         .get()
@@ -2144,6 +2978,17 @@ fn detail_body() -> AnyElement {
                                             }
                                         },
                                     ))
+                                    .children(duanju_mode.then(|| {
+                                        let candidate = candidate.clone();
+                                        button("竖屏连播", Btn::Secondary, move || {
+                                            if episode_count > 0 {
+                                                state::start_playback_portrait(
+                                                    &candidate,
+                                                    selected,
+                                                );
+                                            }
+                                        })
+                                    }))
                                     .child(button(
                                         if is_fav { "已收藏".to_owned() } else { "收藏".to_owned() },
                                         Btn::Secondary,

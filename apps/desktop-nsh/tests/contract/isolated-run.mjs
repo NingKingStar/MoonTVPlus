@@ -145,7 +145,7 @@ function client(base) {
     const url = new URL(pathname, base).toString();
     const headers = { ...(options.headers || {}) };
     if (options.token) headers.authorization = `Bearer ${options.token}`;
-    if (!headers['user-agent']) headers['user-agent'] = 'MoonTVPlus App/0.4 NSH (Windows)';
+    if (!headers['user-agent']) headers['user-agent'] = 'MoonTVPlus App/0.5 NSH (Windows)';
     let body;
     if (options.json !== undefined) {
       headers['content-type'] = 'application/json';
@@ -542,7 +542,7 @@ async function runChecks({ call, base }) {
 
   const uaApp = await call('GET', 'api/source-detail?source=fixture-a&id=1001', {
     token,
-    headers: { 'user-agent': 'MoonTVPlus App/0.4 NSH (Windows)' },
+    headers: { 'user-agent': 'MoonTVPlus App/0.5 NSH (Windows)' },
   });
   const proxied = (uaApp.json?.episodes || []).every((url) => String(url).includes('/api/proxy-m3u8?url='));
   record(
@@ -596,7 +596,7 @@ async function runChecks({ call, base }) {
   // ---- SSE -------------------------------------------------------------
   const sse = await readSse(`${base}api/search/ws?q=%E5%9B%9E%E5%A3%B0`, {
     authorization: `Bearer ${token}`,
-    'user-agent': 'MoonTVPlus App/0.4 NSH (Windows)',
+    'user-agent': 'MoonTVPlus App/0.5 NSH (Windows)',
     accept: 'text/event-stream',
   });
   const types = sse.events.map((event) => event.type);
@@ -926,6 +926,230 @@ async function runChecks({ call, base }) {
     );
   }
 
+  // ---- single-source browsing ------------------------------------------
+  const anonymousSources = await call('GET', 'api/source-search/sources');
+  const sources = await call('GET', 'api/source-search/sources', { token });
+  const siteKeys = (sources.json?.sources || []).map((site) => site.key);
+  record(
+    'W01',
+    '单源浏览的源列表需要登录，且只返回当前账号可用源',
+    anonymousSources.status === 401 &&
+      sources.status === 200 &&
+      siteKeys.length === 3 &&
+      siteKeys.includes('fixture-a'),
+    `anon=${anonymousSources.status} sites=${siteKeys.join(',')}`,
+    { siteKeys }
+  );
+
+  const sourceCategories = await call(
+    'GET',
+    'api/source-search/categories?source=fixture-a',
+    { token }
+  );
+  const classes = sourceCategories.json?.categories || [];
+  const shortParent = classes.find((item) => item.id === '8');
+  const shortChild = classes.find((item) => item.id === '81');
+  record(
+    'W02',
+    '片源分类返回类型→分类的父子关系（type_pid/pid 原样）',
+    sourceCategories.status === 200 &&
+      shortParent?.name === '短剧' &&
+      shortChild?.pid === '8',
+    `classes=${classes.length} childPid=${shortChild?.pid}`,
+    { classes }
+  );
+
+  const sourceVideos1 = await call(
+    'GET',
+    'api/source-search/videos?source=fixture-a&categoryId=1&page=1',
+    { token }
+  );
+  const sourceRows1 = sourceVideos1.json?.results || [];
+  record(
+    'W03',
+    '单源分类第 1 页：2 条、pageCount=2、每条带可播集表',
+    sourceVideos1.status === 200 &&
+      sourceRows1.length === 2 &&
+      sourceVideos1.json?.pageCount === 2 &&
+      sourceRows1.every(
+        (item) =>
+          item.source === 'fixture-a' &&
+          Array.isArray(item.episodes) &&
+          item.episodes.length > 0 &&
+          item.episodes.every((episode) => episode.endsWith('.m3u8'))
+      ),
+    `HTTP ${sourceVideos1.status} rows=${sourceRows1.length} pageCount=${sourceVideos1.json?.pageCount}`,
+    { first: sourceRows1[0] }
+  );
+
+  const sourceVideos2 = await call(
+    'GET',
+    'api/source-search/videos?source=fixture-a&categoryId=1&page=2',
+    { token }
+  );
+  const sourceRows2 = sourceVideos2.json?.results || [];
+  const sourceIds1 = new Set(sourceRows1.map((item) => item.id));
+  record(
+    'W04',
+    '单源分类第 2 页不重复第 1 页，末页只有 1 条',
+    sourceVideos2.status === 200 &&
+      sourceRows2.length === 1 &&
+      sourceRows2.every((item) => !sourceIds1.has(item.id)) &&
+      sourceVideos2.json?.page === 2,
+    `rows=${sourceRows2.length} page=${sourceVideos2.json?.page}`,
+    { ids: sourceRows2.map((item) => item.id) }
+  );
+
+  const sourceSearch = await call(
+    'GET',
+    `api/source-search/search?source=fixture-a&keyword=${encodeURIComponent('回声')}&page=1`,
+    { token }
+  );
+  const searchRows = sourceSearch.json?.results || [];
+  record(
+    'W05',
+    '源内搜索按关键词返回该源自己的结果，并保留 source/source_name',
+    sourceSearch.status === 200 &&
+      searchRows.length === 2 &&
+      searchRows.every(
+        (item) => item.source === 'fixture-a' && item.title.includes('回声')
+      ),
+    `HTTP ${sourceSearch.status} rows=${searchRows.length}`,
+    { titles: searchRows.map((item) => item.title) }
+  );
+
+  const missingSourceCategories = await call(
+    'GET',
+    'api/source-search/categories?source=nope',
+    { token }
+  );
+  const missingCategoryParam = await call(
+    'GET',
+    'api/source-search/videos?source=fixture-a&page=1',
+    { token }
+  );
+  const missingKeyword = await call(
+    'GET',
+    'api/source-search/search?source=fixture-a&page=1',
+    { token }
+  );
+  record(
+    'W06',
+    '不可用源是 404，缺分类/缺关键词是 400（不伪造空成功）',
+    missingSourceCategories.status === 404 &&
+      missingSourceCategories.json?.error?.includes('nope') &&
+      missingCategoryParam.status === 400 &&
+      missingKeyword.status === 400,
+    `source=${missingSourceCategories.status} category=${missingCategoryParam.status} keyword=${missingKeyword.status}`,
+    {
+      sourceError: missingSourceCategories.json?.error,
+    }
+  );
+
+  // ---- short drama -----------------------------------------------------
+  const duanjuSources = await call('GET', 'api/duanju/sources', { token });
+  const duanjuSites = duanjuSources.json?.data || [];
+  record(
+    'U01',
+    '短剧源只包含声明了短剧分类的采集源（夹具 A，排除夹具 C）',
+    duanjuSources.status === 200 &&
+      duanjuSites.length === 1 &&
+      duanjuSites[0].key === 'fixture-a' &&
+      String(duanjuSites[0].typeId) === '8' &&
+      duanjuSites[0].typeName === '短剧',
+    `sites=${duanjuSites.map((site) => site.key).join(',')}`,
+    { duanjuSites }
+  );
+
+  const duanjuCategories = await call(
+    'GET',
+    'api/duanju/categories?source=fixture-a',
+    { token }
+  );
+  const duanjuCategoriesData = duanjuCategories.json?.data || [];
+  record(
+    'U02',
+    '短剧分类保留一级短剧与其子分类',
+    duanjuCategories.status === 200 &&
+      duanjuCategoriesData.some((item) => item.id === '8') &&
+      duanjuCategoriesData.some(
+        (item) => item.id === '81' && item.pid === '8'
+      ),
+    `categories=${duanjuCategoriesData.length}`,
+    { duanjuCategoriesData }
+  );
+
+  const duanjuVideos1 = await call(
+    'GET',
+    'api/duanju/videos?source=fixture-a&categoryId=8&page=1',
+    { token }
+  );
+  const duanjuRows1 = duanjuVideos1.json?.data || [];
+  record(
+    'U03',
+    '短剧第 1 页：2 条、pageCount=2、每条带 m3u8 集表',
+    duanjuVideos1.status === 200 &&
+      duanjuRows1.length === 2 &&
+      duanjuVideos1.json?.pageCount === 2 &&
+      duanjuRows1.every(
+        (item) =>
+          Array.isArray(item.episodes) &&
+          item.episodes.length > 0 &&
+          item.episodes.every((episode) => episode.endsWith('.m3u8'))
+      ),
+    `HTTP ${duanjuVideos1.status} rows=${duanjuRows1.length} pageCount=${duanjuVideos1.json?.pageCount}`,
+    { first: duanjuRows1[0] }
+  );
+
+  const duanjuVideos2 = await call(
+    'GET',
+    'api/duanju/videos?source=fixture-a&categoryId=8&page=2',
+    { token }
+  );
+  const duanjuRows2 = duanjuVideos2.json?.data || [];
+  const duanjuIds1 = new Set(duanjuRows1.map((item) => item.id));
+  record(
+    'U04',
+    '短剧第 2 页不重复第 1 页',
+    duanjuVideos2.status === 200 &&
+      duanjuRows2.length === 1 &&
+      duanjuRows2.every((item) => !duanjuIds1.has(item.id)),
+    `rows=${duanjuRows2.length}`,
+    { ids: duanjuRows2.map((item) => item.id) }
+  );
+
+  const duanjuUnknown = await call(
+    'GET',
+    'api/duanju/videos?source=nope&categoryId=8&page=1',
+    { token }
+  );
+  record(
+    'U05',
+    '未知短剧源是 404，不返回空成功',
+    duanjuUnknown.status === 404 &&
+      duanjuUnknown.json?.code === 404 &&
+      duanjuUnknown.json?.message?.includes('nope'),
+    `HTTP ${duanjuUnknown.status} ${duanjuUnknown.json?.message || ''}`,
+    { status: duanjuUnknown.status }
+  );
+
+  const duanjuRecommends = await call('GET', 'api/duanju/recommends', { token });
+  const duanjuRecommendRows = duanjuRecommends.json?.data || [];
+  record(
+    'U06',
+    '热播短剧返回带可播集表的条目；无条目时明确为空而不是报错',
+    duanjuRecommends.status === 200 &&
+      duanjuRecommendRows.length > 0 &&
+      duanjuRecommendRows.every(
+        (item) =>
+          Array.isArray(item.episodes) &&
+          item.episodes.length > 0 &&
+          item.episodes.every((episode) => episode.endsWith('.m3u8'))
+      ),
+    `HTTP ${duanjuRecommends.status} rows=${duanjuRecommendRows.length}`,
+    { first: duanjuRecommendRows[0] }
+  );
+
   // ---- favorites -------------------------------------------------------
   const emptyFavorites = await call('GET', 'api/favorites', { token });
   const favoritePayload = {
@@ -1251,7 +1475,7 @@ async function runRustContract(base) {
   console.log(out.trimEnd());
   record(
     'R01',
-    '真实客户端代码走完登录/搜索/SSE 增量/建议/历史/详情/收藏/记录/日历/刷新/退出',
+    '真实客户端代码走完登录/搜索/SSE 增量/建议/历史/单源/短剧/详情/收藏/记录/日历/刷新/退出',
     code === 0,
     `cargo test --test live_contract exit=${code}`,
     { log: path.join(logDir, 'cargo-live-contract.log') }
@@ -1265,7 +1489,7 @@ function writeReport(context) {
   const failed = results.length - passed;
   const report = {
     generatedAt: new Date().toISOString(),
-    baseline: '5b132342e7d36282e67edd73d188468d8c446ac6',
+    baseline: '2d8e9460',
     kind: 'isolated-instance-contract',
     runDir,
     instance: context?.base || null,

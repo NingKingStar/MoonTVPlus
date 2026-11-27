@@ -192,6 +192,125 @@ pub fn PlayerPage() -> impl IntoElement {
             .map(|trace| trace.source_name.clone())
             .unwrap_or_default()
     });
+    let portrait_mode = player.get().portrait;
+    let portrait_width = move || {
+        let size = nsh_core::element::window();
+        let stage_height = (size.height.0 - 56.0 - 64.0).max(160.0);
+        (stage_height * 9.0 / 16.0).min((size.width.0 - 48.0).max(160.0))
+    };
+    let make_video = move || {
+        video(source)
+            .element_ref(&video_ref)
+            .w_full()
+            .h_full()
+            .bg(STAGE)
+            .paused(move || !video_playing.get())
+            .muted(move || video_muted.get())
+            .volume(move || settings.get().volume)
+            .focusable(true)
+            .on_focus(move || {
+                crate::logbook::event("player_focus", serde_json::json!("video"));
+            })
+            .on_press(move || video_ref.focus())
+            .on_load_start(move || {
+                crate::logbook::event(
+                    "video_load_start",
+                    serde_json::json!({"url": crate::logbook::safe_url(&state::player().get().url())}),
+                );
+                state::observe_buffering(true);
+            })
+            .on_load(move |info: &VideoInfo| {
+                state::observe_meta(info.duration as f64);
+                crate::logbook::event(
+                    "player_load",
+                    serde_json::json!({
+                        "duration": info.duration,
+                        "reported_size": format!("{:?}", info.size),
+                        "url": crate::logbook::safe_url(&state::player().get().url()),
+                    }),
+                );
+            })
+            .on_progress(move |progress: &VideoProgress| {
+                state::observe_progress(progress.current_time as f64, progress.duration as f64);
+                let token = state::player().get().load_token;
+                maybe_resume(video_ref, token, progress);
+            })
+            .on_buffer(move |buffering: &bool| {
+                state::observe_buffering(*buffering);
+            })
+            .on_error(move |message: &str| {
+                state::observe_error(message);
+            })
+            .on_end(move || {
+                if state::player().get().phase != PlayPhase::Ended {
+                    state::observe_end();
+                }
+            })
+    };
+    let stage = if portrait_mode {
+        view()
+            .flex_1()
+            .min_h(px(0.0))
+            .items_center()
+            .justify_center()
+            .bg(rgb(0x05070c))
+            .child(
+                view()
+                    .w(move || px(portrait_width()))
+                    .h_full()
+                    .flex_col()
+                    .child(
+                        view()
+                            .flex_1()
+                            .min_h(px(0.0))
+                            .relative()
+                            .bg(STAGE)
+                            .child(make_video())
+                            .child(when(
+                                move || source.get().is_empty(),
+                                move || {
+                                    view()
+                                        .absolute()
+                                        .inset_0()
+                                        .items_center()
+                                        .justify_center()
+                                        .child(
+                                            text("正在准备播放…".to_owned())
+                                                .text_size(px(12.0))
+                                                .text_color(MUTED),
+                                        )
+                                },
+                            ))
+                            .child(overlays(video_ref)),
+                    )
+                    .child(control_bar(video_ref, track_width)),
+            )
+            .into_element()
+    } else {
+        view()
+            .flex_1()
+            .min_h(px(0.0))
+            .relative()
+            .bg(STAGE)
+            .child(make_video())
+            .child(when(
+                move || source.get().is_empty(),
+                move || {
+                    view()
+                        .absolute()
+                        .inset_0()
+                        .items_center()
+                        .justify_center()
+                        .child(
+                            text("正在准备播放…".to_owned())
+                                .text_size(px(12.0))
+                                .text_color(MUTED),
+                        )
+                },
+            ))
+            .child(overlays(video_ref))
+            .into_element()
+    };
 
     view()
         .flex_1()
@@ -230,10 +349,12 @@ pub fn PlayerPage() -> impl IntoElement {
                                 .number_of_lines(1),
                         )
                         .child(
-                            text(move || format!("{} · {}", current_episode.get(), source_name.get()))
-                                .text_size(px(10.5))
-                                .text_color(MUTED)
-                                .number_of_lines(1),
+                            text(move || {
+                                format!("{} · {}", current_episode.get(), source_name.get())
+                            })
+                            .text_size(px(10.5))
+                            .text_color(MUTED)
+                            .number_of_lines(1),
                         ),
                 )
                 .child(dynamic(move || {
@@ -247,84 +368,21 @@ pub fn PlayerPage() -> impl IntoElement {
                         view().into_element()
                     }
                 }))
+                .children(portrait_mode.then(|| chip("竖屏短剧", ACCENT, DEMO_TINT)))
                 .child(favorite_button())
                 .child(control_icon(Icon::Panel, "选集与换源", move || {
                     let mut state = player.get();
                     state.panel_open = !state.panel_open;
                     player.set(state);
                 }))
-                .child(control_icon(Icon::Fullscreen, "全屏", toggle_fullscreen.clone())),
+                .child(control_icon(
+                    Icon::Fullscreen,
+                    "全屏",
+                    toggle_fullscreen.clone(),
+                )),
         )
-        .child(
-            view()
-                .flex_1()
-                .min_h(px(0.0))
-                .relative()
-                .bg(STAGE)
-                .child(
-                    video(source)
-                        .element_ref(&video_ref)
-                        .w_full()
-                        .h_full()
-                        .bg(STAGE)
-                        .paused(move || !video_playing.get())
-                        .muted(move || video_muted.get())
-                        .volume(move || settings.get().volume)
-                        .focusable(true)
-                        .on_focus(move || {
-                            crate::logbook::event("player_focus", serde_json::json!("video"));
-                        })
-                        .on_press(move || video_ref.focus())
-                        .on_load_start(move || {
-                            crate::logbook::event(
-                                "video_load_start",
-                                serde_json::json!({"url": crate::logbook::safe_url(&state::player().get().url())}),
-                            );
-                            state::observe_buffering(true);
-                        })
-                        .on_load(move |info: &VideoInfo| {
-                            state::observe_meta(info.duration as f64);
-                            crate::logbook::event(
-                                "player_load",
-                                serde_json::json!({
-                                    "duration": info.duration,
-                                    "reported_size": format!("{:?}", info.size),
-                                    "url": crate::logbook::safe_url(&state::player().get().url()),
-                                }),
-                            );
-                        })
-                        .on_progress(move |progress: &VideoProgress| {
-                            state::observe_progress(progress.current_time as f64, progress.duration as f64);
-                            let token = state::player().get().load_token;
-                            maybe_resume(video_ref, token, progress);
-                        })
-                        .on_buffer(move |buffering: &bool| {
-                            state::observe_buffering(*buffering);
-                        })
-                        .on_error(move |message: &str| {
-                            state::observe_error(message);
-                        })
-                        .on_end(move || {
-                            if state::player().get().phase != PlayPhase::Ended {
-                                state::observe_end();
-                            }
-                        }),
-                )
-                .child(when(move || source.get().is_empty(), move || {
-                    view()
-                        .absolute()
-                        .inset_0()
-                        .items_center()
-                        .justify_center()
-                        .child(
-                            text("正在准备播放…".to_owned())
-                                .text_size(px(12.0))
-                                .text_color(MUTED),
-                        )
-                }))
-                .child(overlays(video_ref)),
-        )
-        .child(control_bar(video_ref, track_width))
+        .child(stage)
+        .children((!portrait_mode).then(|| control_bar(video_ref, track_width)))
         .child(dynamic(move || {
             if !fullscreen.get() {
                 return view().into_element();

@@ -231,6 +231,10 @@ pub struct ProgressEntry {
     pub total_episodes: usize,
     pub updated_at: u64,
     pub work_key: String,
+    /// True when this record came from the short-drama portrait player; the
+    /// server keeps `is_duanju` and the client uses it to resume in portrait.
+    #[serde(default)]
+    pub duanju: bool,
     #[serde(default)]
     pub synced: Option<bool>,
     #[serde(default)]

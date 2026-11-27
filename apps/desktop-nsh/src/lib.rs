@@ -12,6 +12,7 @@ pub mod model;
 pub mod probe;
 pub mod relay;
 pub mod search_stream;
+pub mod source_browse;
 pub mod state;
 pub mod ui;
 

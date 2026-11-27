@@ -239,6 +239,116 @@ fn live_contract() {
             "a zero score is not turned into a rating"
         );
 
+        // --- source browsing (single source) -----------------------------
+        let sites = api::source_sites(&base, &token)
+            .await
+            .expect("source sites");
+        assert!(
+            sites.iter().any(|site| site.key == "fixture-a"),
+            "fixture A is available: {sites:?}"
+        );
+        assert_eq!(sites.len(), 3, "three enabled sources");
+        let categories = api::source_categories(&base, &token, "fixture-a")
+            .await
+            .expect("source categories");
+        assert!(
+            categories.iter().any(|category| category.name == "电影"),
+            "CMS classes reach the client: {categories:?}"
+        );
+        assert!(
+            categories
+                .iter()
+                .any(|category| category.id == "81" && category.pid == "8"),
+            "hierarchical children keep their parent"
+        );
+        let source_page = api::source_videos(&base, &token, "fixture-a", "1", 1)
+            .await
+            .expect("source videos page 1");
+        assert_eq!(source_page.page_count, 2, "fixture pages hold two rows");
+        assert_eq!(source_page.items.len(), 2);
+        assert!(
+            source_page.items.iter().all(|item| item.source == "fixture-a"
+                && !item.episodes.is_empty()
+                && item.episodes.iter().all(|episode| episode.ends_with(".m3u8"))),
+            "source browse keeps the source identity and playable episodes"
+        );
+        let source_page2 = api::source_videos(&base, &token, "fixture-a", "1", 2)
+            .await
+            .expect("source videos page 2");
+        assert_eq!(source_page2.page, 2);
+        assert_eq!(source_page2.items.len(), 1);
+        assert!(
+            !source_page2.items.iter().any(|item| source_page
+                .items
+                .iter()
+                .any(|first| first.id == item.id)),
+            "the next page does not repeat page 1"
+        );
+        let source_hits = api::source_search(&base, &token, "fixture-a", "回声", 1)
+            .await
+            .expect("source search");
+        assert_eq!(source_hits.items.len(), 2, "keyword matches two titles");
+        assert!(
+            source_hits
+                .items
+                .iter()
+                .all(|item| item.title.contains("回声")),
+            "the source-scoped search uses the source's own results"
+        );
+        let missing_source = api::source_categories(&base, &token, "nope").await;
+        assert!(
+            matches!(missing_source, Err(ApiError::BadResponse(ref message)) if message.contains("可用列表")),
+            "an unavailable source is a precise error, got {missing_source:?}"
+        );
+
+        // --- short drama -------------------------------------------------
+        let duanju_sites = api::duanju_sites(&base, &token)
+            .await
+            .expect("duanju sites");
+        assert_eq!(duanju_sites.len(), 1, "only fixture A declares short drama");
+        assert_eq!(duanju_sites[0].key, "fixture-a");
+        assert_eq!(duanju_sites[0].type_id, "8");
+        let duanju_categories = api::duanju_categories(&base, &token, "fixture-a")
+            .await
+            .expect("duanju categories");
+        assert!(
+            duanju_categories
+                .iter()
+                .any(|category| category.id == "8")
+                && duanju_categories
+                    .iter()
+                    .any(|category| category.id == "81" && category.pid == "8"),
+            "short drama keeps its parent and children: {duanju_categories:?}"
+        );
+        let duanju_page = api::duanju_videos(&base, &token, "fixture-a", "8", 1)
+            .await
+            .expect("duanju page 1");
+        assert_eq!(duanju_page.page_count, 2);
+        assert_eq!(duanju_page.items.len(), 2);
+        assert!(
+            duanju_page.items.iter().all(|item| !item.episodes.is_empty()),
+            "short drama rows carry episodes for the detail page"
+        );
+        let duanju_page2 = api::duanju_videos(&base, &token, "fixture-a", "8", 2)
+            .await
+            .expect("duanju page 2");
+        assert_eq!(duanju_page2.items.len(), 1);
+        assert!(
+            !duanju_page2.items.iter().any(|item| duanju_page
+                .items
+                .iter()
+                .any(|first| first.id == item.id)),
+            "short-drama pages do not repeat ids"
+        );
+        let recommends = api::duanju_recommends(&base, &token)
+            .await
+            .expect("duanju recommends");
+        assert!(
+            !recommends.is_empty()
+                && recommends.iter().all(|item| !item.episodes.is_empty()),
+            "recommendations are real rows with playable episodes: {recommends:?}"
+        );
+
         // --- source detail ----------------------------------------------
         let detail = api::detail(&base, &token, "fixture-a", "1001", Some(current))
             .await
@@ -305,6 +415,7 @@ fn live_contract() {
             total_episodes: detail.episode_count(),
             updated_at: api_transport::now_ms(),
             work_key: format!("{}\u{1f}{}", detail.title, detail.year),
+            duanju: false,
             synced: None,
             wire: serde_json::Value::Null,
         };
@@ -337,6 +448,24 @@ fn live_contract() {
         let same: Vec<&ProgressEntry> = updated.iter().filter(|r| r.key == progress.key).collect();
         assert_eq!(same.len(), 1, "re-saving the same key updates in place");
         assert!((same[0].position - 300.0).abs() < 0.001);
+
+        // Short-drama records keep `is_duanju` so a resume can reopen the
+        // portrait stage; a normal record must not overwrite it with false.
+        progress.duanju = true;
+        progress.position = 42.0;
+        progress.updated_at = api_transport::now_ms();
+        api::save_progress(&base, &token, &progress)
+            .await
+            .expect("save portrait progress");
+        let portrait = api::playrecords(&base, &token)
+            .await
+            .expect("playrecords");
+        let stored_portrait = portrait
+            .iter()
+            .find(|record| record.key == progress.key)
+            .expect("portrait record");
+        assert!(stored_portrait.duanju, "is_duanju survives the round trip");
+        assert!((stored_portrait.position - 42.0).abs() < 0.001);
 
         // --- transparent refresh ---------------------------------------
         let stale = stale_token(&token, |value| {

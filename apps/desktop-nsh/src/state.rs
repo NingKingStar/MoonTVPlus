@@ -16,6 +16,7 @@ use crate::{
         save_search_history, save_settings, short_hash,
     },
     search_stream,
+    source_browse::{self, Category, DuanjuSite, Site},
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -97,6 +98,8 @@ pub enum Route {
     Connect,
     Home,
     Discover,
+    Sources,
+    Duanju,
     Search,
     Detail(Work),
     Player,
@@ -111,6 +114,8 @@ impl Route {
             Route::Connect => "connect",
             Route::Home => "home",
             Route::Discover => "discover",
+            Route::Sources => "sources",
+            Route::Duanju => "duanju",
             Route::Search => "search",
             Route::Detail(_) => "detail",
             Route::Player => "player",
@@ -125,6 +130,8 @@ impl Route {
             Route::Connect => "连接",
             Route::Home => "首页",
             Route::Discover => "发现",
+            Route::Sources => "单源",
+            Route::Duanju => "短剧",
             Route::Search => "搜索",
             Route::Detail(_) => "详情",
             Route::Player => "播放",
@@ -138,6 +145,8 @@ impl Route {
         match self {
             Route::Home => Some("home"),
             Route::Discover => Some("discover"),
+            Route::Sources => Some("sources"),
+            Route::Duanju => Some("duanju"),
             Route::Favorites => Some("favorites"),
             Route::History => Some("history"),
             Route::Settings => Some("settings"),
@@ -311,6 +320,116 @@ impl Default for DiscoverState {
     }
 }
 
+/// Per-source browsing: sources, the CMS category tree, a page of results,
+/// and an optional source-scoped search.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SourceBrowseState {
+    pub sites: Vec<Site>,
+    pub sites_phase: LoadPhase,
+    pub sites_error: String,
+    pub sites_generation: u64,
+    pub source: String,
+    pub categories: Vec<Category>,
+    pub parent: String,
+    pub category: String,
+    pub categories_loaded: bool,
+    pub items: Vec<source_browse::Item>,
+    pub phase: LoadPhase,
+    pub error: String,
+    pub notice: String,
+    pub page: usize,
+    pub page_count: usize,
+    pub total: usize,
+    pub loading_more: bool,
+    pub generation: u64,
+    pub list_generation: u64,
+    pub searching: bool,
+    pub keyword: String,
+    pub search_input: String,
+}
+
+impl Default for SourceBrowseState {
+    fn default() -> Self {
+        Self {
+            sites: Vec::new(),
+            sites_phase: LoadPhase::Idle,
+            sites_error: String::new(),
+            sites_generation: 0,
+            source: String::new(),
+            categories: Vec::new(),
+            parent: String::new(),
+            category: String::new(),
+            categories_loaded: false,
+            items: Vec::new(),
+            phase: LoadPhase::Idle,
+            error: String::new(),
+            notice: String::new(),
+            page: 0,
+            page_count: 0,
+            total: 0,
+            loading_more: false,
+            generation: 0,
+            list_generation: 0,
+            searching: false,
+            keyword: String::new(),
+            search_input: String::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct DuanjuState {
+    pub sites: Vec<DuanjuSite>,
+    pub sites_phase: LoadPhase,
+    pub sites_error: String,
+    pub sites_generation: u64,
+    pub source: String,
+    pub categories: Vec<Category>,
+    pub parent: String,
+    pub category: String,
+    pub items: Vec<source_browse::Item>,
+    pub recommends: Vec<source_browse::Item>,
+    pub recommends_phase: LoadPhase,
+    pub recommends_error: String,
+    pub phase: LoadPhase,
+    pub error: String,
+    pub notice: String,
+    pub page: usize,
+    pub page_count: usize,
+    pub total: usize,
+    pub loading_more: bool,
+    pub generation: u64,
+    pub list_generation: u64,
+}
+
+impl Default for DuanjuState {
+    fn default() -> Self {
+        Self {
+            sites: Vec::new(),
+            sites_phase: LoadPhase::Idle,
+            sites_error: String::new(),
+            sites_generation: 0,
+            source: String::new(),
+            categories: Vec::new(),
+            parent: String::new(),
+            category: String::new(),
+            items: Vec::new(),
+            recommends: Vec::new(),
+            recommends_phase: LoadPhase::Idle,
+            recommends_error: String::new(),
+            phase: LoadPhase::Idle,
+            error: String::new(),
+            notice: String::new(),
+            page: 0,
+            page_count: 0,
+            total: 0,
+            loading_more: false,
+            generation: 0,
+            list_generation: 0,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct DetailState {
     pub work: Option<Work>,
@@ -320,6 +439,8 @@ pub struct DetailState {
     pub error: String,
     pub generation: u64,
     pub selected_episode: usize,
+    /// Entered from the short-drama page: show the portrait autoplay action.
+    pub duanju: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -373,6 +494,9 @@ pub struct PlayerState {
     pub auto_in: Option<u32>,
     pub auto_token: u64,
     pub fullscreen: bool,
+    /// Short-drama portrait stage: a centered 9:16 column with its own
+    /// controls, entered from the short-drama page or a portrait resume.
+    pub portrait: bool,
     pub muted: bool,
     pub notice: String,
 }
@@ -406,6 +530,7 @@ impl Default for PlayerState {
             auto_in: None,
             auto_token: 0,
             fullscreen: false,
+            portrait: false,
             muted: false,
             notice: String::new(),
         }
@@ -536,6 +661,14 @@ pub fn detail_state() -> Signal<DetailState> {
 
 pub fn discover_state() -> Signal<DiscoverState> {
     global::<DiscoverState>()
+}
+
+pub fn source_browse_state() -> Signal<SourceBrowseState> {
+    global::<SourceBrowseState>()
+}
+
+pub fn duanju_state() -> Signal<DuanjuState> {
+    global::<DuanjuState>()
 }
 
 pub fn player() -> Signal<PlayerState> {
@@ -2150,9 +2283,773 @@ pub fn discover_open_item(item: &Item) {
     search_for(item.title.clone());
 }
 
+// ---------------------------- source browsing ---------------------------
+
+fn browse_work(item: &source_browse::Item) -> Work {
+    Work {
+        title: item.title.clone(),
+        year: item.year.clone(),
+        poster: item.poster.clone(),
+        desc: item.desc.clone(),
+        genres: item
+            .type_name
+            .split(['/', ',', '，', '、'])
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned)
+            .take(3)
+            .collect(),
+        candidates: vec![Candidate {
+            source: item.source.clone(),
+            id: item.id.clone(),
+            source_name: item.source_name.clone(),
+            title: item.title.clone(),
+            year: item.year.clone(),
+            poster: item.poster.clone(),
+            desc: item.desc.clone(),
+            remarks: item.remarks.clone(),
+            episodes: item.episodes.clone(),
+            episode_titles: item.episode_titles.clone(),
+            ..Candidate::default()
+        }],
+        weight: 0,
+    }
+}
+
+pub fn open_source_item(item: &source_browse::Item) {
+    open_detail(browse_work(item), Some(item.source.clone()));
+}
+
+pub fn open_duanju_item(item: &source_browse::Item) {
+    open_detail_duanju(browse_work(item), Some(item.source.clone()));
+}
+
+pub fn open_sources() {
+    go(Route::Sources);
+    let state = source_browse_state().get();
+    if state.sites.is_empty() || state.sites_phase == LoadPhase::Error {
+        source_load_sites(false);
+        return;
+    }
+    if !state.source.is_empty() && !state.categories_loaded {
+        source_load_categories();
+    }
+}
+
+pub fn source_refresh_sites() {
+    source_load_sites(true);
+}
+
+fn source_load_sites(force: bool) {
+    if !force && source_browse_state().get().sites_phase == LoadPhase::Loading {
+        return;
+    }
+    let session_now = session().get();
+    let mut state = source_browse_state().get();
+    state.sites_generation += 1;
+    let generation = state.sites_generation;
+    state.sites_phase = LoadPhase::Loading;
+    state.sites_error.clear();
+    source_browse_state().set(state);
+    if !session_now.connected() {
+        let mut state = source_browse_state().get();
+        state.sites_phase = LoadPhase::Error;
+        state.sites_error = "请先连接实例并登录".to_string();
+        source_browse_state().set(state);
+        return;
+    }
+    let base = session_now.base.clone();
+    let token = session_now.token.clone();
+    let session_generation = session_now.generation;
+    spawn_global(async move {
+        let result = api::source_sites(&base, &token).await;
+        if source_browse_state().get().sites_generation != generation
+            || session().get().generation != session_generation
+        {
+            return;
+        }
+        let mut state = source_browse_state().get();
+        match result {
+            Ok(sites) => {
+                let previous = state.source.clone();
+                state.sites = sites;
+                state.sites_phase = LoadPhase::Ready;
+                state.sites_error.clear();
+                let keep = state.sites.iter().any(|site| site.key == previous);
+                state.source = if keep {
+                    previous
+                } else {
+                    state
+                        .sites
+                        .first()
+                        .map(|site| site.key.clone())
+                        .unwrap_or_default()
+                };
+                source_browse_state().set(state);
+                if !source_browse_state().get().source.is_empty() {
+                    source_load_categories();
+                }
+            }
+            Err(error) => {
+                if error.is_auth() {
+                    session_expired();
+                }
+                state.sites_phase = LoadPhase::Error;
+                state.sites_error = error.message();
+                source_browse_state().set(state);
+            }
+        }
+    });
+}
+
+pub fn source_select(key: String) {
+    let state = source_browse_state().get();
+    if state.source == key {
+        return;
+    }
+    let mut state = state;
+    state.source = key;
+    state.categories.clear();
+    state.categories_loaded = false;
+    state.parent.clear();
+    state.category.clear();
+    state.items.clear();
+    state.phase = LoadPhase::Loading;
+    state.error.clear();
+    state.notice.clear();
+    state.page = 0;
+    state.page_count = 0;
+    state.total = 0;
+    state.loading_more = false;
+    state.generation += 1;
+    state.list_generation += 1;
+    source_browse_state().set(state);
+    source_load_categories();
+}
+
+fn source_load_categories() {
+    let session_now = session().get();
+    let mut state = source_browse_state().get();
+    let source = state.source.clone();
+    if source.is_empty() {
+        return;
+    }
+    if !session_now.connected() {
+        state.phase = LoadPhase::Error;
+        state.error = "请先连接实例并登录".to_string();
+        source_browse_state().set(state);
+        return;
+    }
+    state.generation += 1;
+    let generation = state.generation;
+    state.phase = LoadPhase::Loading;
+    state.error.clear();
+    state.notice.clear();
+    state.categories_loaded = false;
+    state.items.clear();
+    state.page = 0;
+    state.page_count = 0;
+    state.total = 0;
+    source_browse_state().set(state);
+    let base = session_now.base.clone();
+    let token = session_now.token.clone();
+    let session_generation = session_now.generation;
+    spawn_global(async move {
+        let result = api::source_categories(&base, &token, &source).await;
+        if source_browse_state().get().generation != generation
+            || session().get().generation != session_generation
+        {
+            return;
+        }
+        let mut state = source_browse_state().get();
+        match result {
+            Ok(categories) => {
+                state.categories = categories;
+                state.categories_loaded = true;
+                if state.categories.is_empty() {
+                    state.phase = LoadPhase::Ready;
+                    state.items.clear();
+                    state.notice =
+                        "这个源没有返回可用分类；它可能暂时不可用，换一个源或稍后重试".to_string();
+                    source_browse_state().set(state);
+                    return;
+                }
+                let (parent, category) = source_browse::default_selection(&state.categories, "");
+                state.parent = parent;
+                state.category = category;
+                source_browse_state().set(state);
+                source_load_list(true);
+            }
+            Err(error) => {
+                if error.is_auth() {
+                    session_expired();
+                }
+                state.categories.clear();
+                state.items.clear();
+                state.phase = LoadPhase::Error;
+                state.error = error.message();
+                source_browse_state().set(state);
+            }
+        }
+    });
+}
+
+pub fn source_set_parent(parent: String) {
+    let mut state = source_browse_state().get();
+    if state.parent == parent {
+        return;
+    }
+    let children = source_browse::children(&state.categories, &parent);
+    state.parent = parent;
+    state.category = children
+        .first()
+        .map(|child| child.id.clone())
+        .unwrap_or_else(|| state.parent.clone());
+    state.items.clear();
+    state.page = 0;
+    state.page_count = 0;
+    state.phase = LoadPhase::Loading;
+    state.error.clear();
+    state.notice.clear();
+    state.generation += 1;
+    source_browse_state().set(state);
+    source_load_list(true);
+}
+
+pub fn source_set_category(category: String) {
+    let mut state = source_browse_state().get();
+    if state.category == category {
+        return;
+    }
+    state.category = category;
+    state.items.clear();
+    state.page = 0;
+    state.page_count = 0;
+    state.phase = LoadPhase::Loading;
+    state.error.clear();
+    state.notice.clear();
+    state.generation += 1;
+    source_browse_state().set(state);
+    source_load_list(true);
+}
+
+fn source_load_list(reset: bool) {
+    let session_now = session().get();
+    let mut state = source_browse_state().get();
+    let source = state.source.clone();
+    let category = state.category.clone();
+    let keyword = state.keyword.clone();
+    let searching = state.searching;
+    if source.is_empty() || category.is_empty() || (state.searching && keyword.is_empty()) {
+        return;
+    }
+    if !session_now.connected() {
+        state.phase = LoadPhase::Error;
+        state.error = "请先连接实例并登录".to_string();
+        source_browse_state().set(state);
+        return;
+    }
+    let page = if reset { 1 } else { state.page + 1 };
+    state.list_generation += 1;
+    let generation = state.list_generation;
+    let source_generation = state.generation;
+    if reset {
+        state.items.clear();
+        state.page = 1;
+        state.phase = LoadPhase::Loading;
+    } else {
+        state.loading_more = true;
+    }
+    state.error.clear();
+    state.notice.clear();
+    source_browse_state().set(state);
+    let base = session_now.base.clone();
+    let token = session_now.token.clone();
+    let session_generation = session_now.generation;
+    spawn_global(async move {
+        let result = if searching {
+            api::source_search(&base, &token, &source, &keyword, page).await
+        } else {
+            api::source_videos(&base, &token, &source, &category, page).await
+        };
+        let now = source_browse_state().get();
+        if now.list_generation != generation
+            || now.generation != source_generation
+            || session().get().generation != session_generation
+        {
+            return;
+        }
+        let mut state = source_browse_state().get();
+        state.loading_more = false;
+        match result {
+            Ok(page_data) => {
+                let added = source_browse::merge(&mut state.items, page_data.items.clone());
+                state.page = page_data.page.max(1);
+                state.page_count = page_data.page_count.max(state.page);
+                state.total = page_data.total;
+                state.phase = LoadPhase::Ready;
+                if !reset && added == 0 && state.page < state.page_count {
+                    state.page_count = state.page;
+                    state.notice = "这一页没有新条目，已停止加载".to_string();
+                }
+                source_browse_state().set(state);
+            }
+            Err(error) => {
+                if error.is_auth() {
+                    session_expired();
+                }
+                if reset {
+                    state.phase = LoadPhase::Error;
+                    state.error = error.message();
+                } else {
+                    state.notice = format!("加载下一页失败：{}", error.message());
+                }
+                source_browse_state().set(state);
+            }
+        }
+    });
+}
+
+pub fn source_more() {
+    let state = source_browse_state().get();
+    if state.loading_more || state.page == 0 || state.page >= state.page_count {
+        return;
+    }
+    source_load_list(false);
+}
+
+pub fn source_retry() {
+    let state = source_browse_state().get();
+    if state.sites.is_empty() || state.sites_phase == LoadPhase::Error {
+        source_load_sites(true);
+    } else if state.categories.is_empty() {
+        source_load_categories();
+    } else {
+        source_load_list(true);
+    }
+}
+
+pub fn source_search_input(value: String) {
+    let mut state = source_browse_state().get();
+    state.search_input = value;
+    source_browse_state().set(state);
+}
+
+pub fn source_run_search() {
+    let mut state = source_browse_state().get();
+    let keyword = state.search_input.trim().to_string();
+    if keyword.is_empty() {
+        toast("请输入源内搜索关键词", ToastTone::Info);
+        return;
+    }
+    if state.source.is_empty() || state.category.is_empty() {
+        toast("请先选择一个可用的源和分类", ToastTone::Error);
+        return;
+    }
+    state.searching = true;
+    state.keyword = keyword;
+    state.page = 0;
+    state.items.clear();
+    state.phase = LoadPhase::Loading;
+    state.error.clear();
+    state.notice.clear();
+    source_browse_state().set(state);
+    source_load_list(true);
+}
+
+pub fn source_back_browse() {
+    let mut state = source_browse_state().get();
+    if !state.searching {
+        return;
+    }
+    state.searching = false;
+    state.keyword.clear();
+    state.search_input.clear();
+    state.page = 0;
+    state.items.clear();
+    state.phase = LoadPhase::Loading;
+    state.error.clear();
+    state.notice.clear();
+    source_browse_state().set(state);
+    source_load_list(true);
+}
+
+// ------------------------------ short drama -----------------------------
+
+pub fn open_duanju() {
+    go(Route::Duanju);
+    let state = duanju_state().get();
+    if state.sites.is_empty() || state.sites_phase == LoadPhase::Error {
+        duanju_load_sites(false);
+    }
+    if state.recommends_phase == LoadPhase::Idle && !state.sites.is_empty() {
+        duanju_load_recommends();
+    }
+}
+
+pub fn duanju_refresh_sites() {
+    duanju_load_sites(true);
+}
+
+fn duanju_load_sites(force: bool) {
+    if !force && duanju_state().get().sites_phase == LoadPhase::Loading {
+        return;
+    }
+    let session_now = session().get();
+    let mut state = duanju_state().get();
+    state.sites_generation += 1;
+    let generation = state.sites_generation;
+    state.sites_phase = LoadPhase::Loading;
+    state.sites_error.clear();
+    duanju_state().set(state);
+    if !session_now.connected() {
+        let mut state = duanju_state().get();
+        state.sites_phase = LoadPhase::Error;
+        state.sites_error = "请先连接实例并登录".to_string();
+        duanju_state().set(state);
+        return;
+    }
+    let base = session_now.base.clone();
+    let token = session_now.token.clone();
+    let session_generation = session_now.generation;
+    spawn_global(async move {
+        let result = api::duanju_sites(&base, &token).await;
+        if duanju_state().get().sites_generation != generation
+            || session().get().generation != session_generation
+        {
+            return;
+        }
+        let mut state = duanju_state().get();
+        match result {
+            Ok(sites) => {
+                let previous = state.source.clone();
+                state.sites = sites;
+                state.sites_phase = LoadPhase::Ready;
+                state.sites_error.clear();
+                let keep = state.sites.iter().any(|site| site.key == previous);
+                state.source = if keep {
+                    previous
+                } else {
+                    state
+                        .sites
+                        .first()
+                        .map(|site| site.key.clone())
+                        .unwrap_or_default()
+                };
+                duanju_state().set(state);
+                if !duanju_state().get().source.is_empty() {
+                    duanju_load_categories();
+                }
+                duanju_load_recommends();
+            }
+            Err(error) => {
+                if error.is_auth() {
+                    session_expired();
+                }
+                state.sites_phase = LoadPhase::Error;
+                state.sites_error = error.message();
+                duanju_state().set(state);
+            }
+        }
+    });
+}
+
+pub fn duanju_select(key: String) {
+    let mut state = duanju_state().get();
+    if state.source == key {
+        return;
+    }
+    state.source = key;
+    state.categories.clear();
+    state.parent.clear();
+    state.category.clear();
+    state.items.clear();
+    state.phase = LoadPhase::Loading;
+    state.error.clear();
+    state.notice.clear();
+    state.page = 0;
+    state.page_count = 0;
+    state.total = 0;
+    state.loading_more = false;
+    state.generation += 1;
+    state.list_generation += 1;
+    duanju_state().set(state);
+    duanju_load_categories();
+}
+
+fn duanju_load_categories() {
+    let session_now = session().get();
+    let mut state = duanju_state().get();
+    if state.source.is_empty() {
+        return;
+    }
+    if !session_now.connected() {
+        state.phase = LoadPhase::Error;
+        state.error = "请先连接实例并登录".to_string();
+        duanju_state().set(state);
+        return;
+    }
+    let source = state.source.clone();
+    state.generation += 1;
+    let generation = state.generation;
+    state.phase = LoadPhase::Loading;
+    state.error.clear();
+    state.notice.clear();
+    state.items.clear();
+    state.page = 0;
+    state.page_count = 0;
+    state.total = 0;
+    duanju_state().set(state);
+    let base = session_now.base.clone();
+    let token = session_now.token.clone();
+    let session_generation = session_now.generation;
+    spawn_global(async move {
+        let result = api::duanju_categories(&base, &token, &source).await;
+        if duanju_state().get().generation != generation
+            || session().get().generation != session_generation
+        {
+            return;
+        }
+        let mut state = duanju_state().get();
+        let preferred = state
+            .sites
+            .iter()
+            .find(|site| site.key == source)
+            .map(|site| site.type_id.clone())
+            .unwrap_or_default();
+        match result {
+            Ok(categories) => {
+                state.categories = categories;
+                if state.categories.is_empty() {
+                    if !preferred.is_empty() {
+                        state.category = preferred;
+                        state.parent.clear();
+                        duanju_state().set(state);
+                        duanju_load_list(true);
+                    } else {
+                        state.phase = LoadPhase::Ready;
+                        state.notice =
+                            "这个源没有返回短剧分类；可能是分类缓存过期，稍后刷新".to_string();
+                        duanju_state().set(state);
+                    }
+                    return;
+                }
+                let (parent, category) =
+                    source_browse::default_selection(&state.categories, &preferred);
+                state.parent = parent;
+                state.category = category;
+                duanju_state().set(state);
+                duanju_load_list(true);
+            }
+            Err(error) => {
+                if error.is_auth() {
+                    session_expired();
+                }
+                if !preferred.is_empty() {
+                    // The source list already told us which category is short
+                    // drama; a category endpoint failure must not hide the list.
+                    state.category = preferred;
+                    state.parent.clear();
+                    state.notice = format!("短剧分类加载失败，已用源标记分类：{}", error.message());
+                    duanju_state().set(state);
+                    duanju_load_list(true);
+                } else {
+                    state.phase = LoadPhase::Error;
+                    state.error = error.message();
+                    duanju_state().set(state);
+                }
+            }
+        }
+    });
+}
+
+pub fn duanju_set_parent(parent: String) {
+    let mut state = duanju_state().get();
+    if state.parent == parent {
+        return;
+    }
+    let children = source_browse::children(&state.categories, &parent);
+    state.parent = parent;
+    state.category = children
+        .first()
+        .map(|child| child.id.clone())
+        .unwrap_or_else(|| state.parent.clone());
+    state.items.clear();
+    state.page = 0;
+    state.page_count = 0;
+    state.phase = LoadPhase::Loading;
+    state.error.clear();
+    state.notice.clear();
+    state.generation += 1;
+    duanju_state().set(state);
+    duanju_load_list(true);
+}
+
+pub fn duanju_set_category(category: String) {
+    let mut state = duanju_state().get();
+    if state.category == category {
+        return;
+    }
+    state.category = category;
+    state.items.clear();
+    state.page = 0;
+    state.page_count = 0;
+    state.phase = LoadPhase::Loading;
+    state.error.clear();
+    state.notice.clear();
+    state.generation += 1;
+    duanju_state().set(state);
+    duanju_load_list(true);
+}
+
+fn duanju_load_list(reset: bool) {
+    let session_now = session().get();
+    let mut state = duanju_state().get();
+    let source = state.source.clone();
+    let category = state.category.clone();
+    if source.is_empty() || category.is_empty() {
+        return;
+    }
+    if !session_now.connected() {
+        state.phase = LoadPhase::Error;
+        state.error = "请先连接实例并登录".to_string();
+        duanju_state().set(state);
+        return;
+    }
+    let page = if reset { 1 } else { state.page + 1 };
+    state.list_generation += 1;
+    let generation = state.list_generation;
+    let source_generation = state.generation;
+    if reset {
+        state.items.clear();
+        state.page = 1;
+        state.phase = LoadPhase::Loading;
+    } else {
+        state.loading_more = true;
+    }
+    state.error.clear();
+    duanju_state().set(state);
+    let base = session_now.base.clone();
+    let token = session_now.token.clone();
+    let session_generation = session_now.generation;
+    spawn_global(async move {
+        let result = api::duanju_videos(&base, &token, &source, &category, page).await;
+        let now = duanju_state().get();
+        if now.list_generation != generation
+            || now.generation != source_generation
+            || session().get().generation != session_generation
+        {
+            return;
+        }
+        let mut state = duanju_state().get();
+        state.loading_more = false;
+        match result {
+            Ok(page_data) => {
+                let added = source_browse::merge(&mut state.items, page_data.items.clone());
+                state.page = page_data.page.max(1);
+                state.page_count = page_data.page_count.max(state.page);
+                state.total = page_data.total;
+                state.phase = LoadPhase::Ready;
+                if !reset && added == 0 && state.page < state.page_count {
+                    state.page_count = state.page;
+                    state.notice = "这一页没有新条目，已停止加载".to_string();
+                }
+                duanju_state().set(state);
+            }
+            Err(error) => {
+                if error.is_auth() {
+                    session_expired();
+                }
+                if reset {
+                    state.phase = LoadPhase::Error;
+                    state.error = error.message();
+                } else {
+                    state.notice = format!("加载下一页失败：{}", error.message());
+                }
+                duanju_state().set(state);
+            }
+        }
+    });
+}
+
+pub fn duanju_more() {
+    let state = duanju_state().get();
+    if state.loading_more || state.page == 0 || state.page >= state.page_count {
+        return;
+    }
+    duanju_load_list(false);
+}
+
+pub fn duanju_retry() {
+    let state = duanju_state().get();
+    if state.sites.is_empty() || state.sites_phase == LoadPhase::Error {
+        duanju_load_sites(true);
+    } else if state.categories.is_empty() {
+        duanju_load_categories();
+    } else {
+        duanju_load_list(true);
+    }
+}
+
+fn duanju_load_recommends() {
+    let state = duanju_state().get();
+    if state.recommends_phase == LoadPhase::Loading || state.recommends_phase == LoadPhase::Ready {
+        return;
+    }
+    let session_now = session().get();
+    if !session_now.connected() {
+        return;
+    }
+    let mut state = duanju_state().get();
+    state.recommends_phase = LoadPhase::Loading;
+    state.recommends_error.clear();
+    duanju_state().set(state);
+    let base = session_now.base.clone();
+    let token = session_now.token.clone();
+    let session_generation = session_now.generation;
+    spawn_global(async move {
+        let result = api::duanju_recommends(&base, &token).await;
+        if session().get().generation != session_generation {
+            return;
+        }
+        let mut state = duanju_state().get();
+        match result {
+            Ok(items) => {
+                state.recommends = items;
+                state.recommends_phase = LoadPhase::Ready;
+            }
+            Err(error) => {
+                if error.is_auth() {
+                    session_expired();
+                }
+                state.recommends_phase = LoadPhase::Error;
+                state.recommends_error = error.message();
+            }
+        }
+        duanju_state().set(state);
+    });
+}
+
+pub fn duanju_retry_recommends() {
+    let mut state = duanju_state().get();
+    state.recommends_phase = LoadPhase::Idle;
+    duanju_state().set(state);
+    duanju_load_recommends();
+}
+
 // ------------------------------- detail ---------------------------------
 
-pub fn open_detail(mut work: Work, source: Option<String>) {
+pub fn open_detail(work: Work, source: Option<String>) {
+    open_detail_mode(work, source, false);
+}
+
+/// Short-drama cards open the same detail, but the detail page offers the
+/// portrait autoplay action.
+pub fn open_detail_duanju(work: Work, source: Option<String>) {
+    open_detail_mode(work, source, true);
+}
+
+fn open_detail_mode(mut work: Work, source: Option<String>, duanju: bool) {
     if session().get().demo()
         && let Some(full) = demo::works()
             .into_iter()
@@ -2180,6 +3077,7 @@ pub fn open_detail(mut work: Work, source: Option<String>) {
     state.generation += 1;
     state.phase = LoadPhase::Loading;
     state.error.clear();
+    state.duanju = duanju;
     detail_state().set(state);
     go(Route::Detail(detail_state().get().work.clone().unwrap()));
     fetch_detail();
@@ -2298,6 +3196,17 @@ pub fn play_selected(index: usize) {
 }
 
 pub fn start_playback(candidate: &Candidate, index: usize) {
+    start_playback_mode(candidate, index, false);
+}
+
+/// Short-drama entry: the same queue and progress, rendered as a 9:16
+/// portrait column with autoplay. Called from the detail page's portrait
+/// action and from a portrait resume record.
+pub fn start_playback_portrait(candidate: &Candidate, index: usize) {
+    start_playback_mode(candidate, index, true);
+}
+
+fn start_playback_mode(candidate: &Candidate, index: usize, portrait: bool) {
     if candidate.episodes.is_empty() {
         toast("这个片源没有可用剧集".to_owned(), ToastTone::Error);
         return;
@@ -2378,6 +3287,7 @@ pub fn start_playback(candidate: &Candidate, index: usize) {
     state.resume_attempts = 0;
     state.resume_done = false;
     state.fullscreen = false;
+    state.portrait = portrait;
     state.muted = false;
     state.notice.clear();
     player().set(state);
@@ -2447,6 +3357,7 @@ pub fn switch_player_source(source: String) {
     };
     let current_index = state.current().map(|item| item.index).unwrap_or(0);
     let index = current_index.min(candidate.episode_count().saturating_sub(1));
+    let portrait = state.portrait;
     if candidate.episodes.is_empty() {
         if session().get().demo() {
             toast("这个演示片源没有剧集".to_owned(), ToastTone::Error);
@@ -2480,7 +3391,7 @@ pub fn switch_player_source(source: String) {
                         return;
                     }
                     let index = index.min(fetched.episode_count().saturating_sub(1));
-                    start_playback(&fetched, index);
+                    start_playback_mode(&fetched, index, portrait);
                     toast("已切换到新的片源".to_owned(), ToastTone::Success);
                 }
                 Err(error) => {
@@ -2493,7 +3404,7 @@ pub fn switch_player_source(source: String) {
         });
         return;
     }
-    start_playback(&candidate, index);
+    start_playback_mode(&candidate, index, portrait);
     toast("已切换到新的片源".to_owned(), ToastTone::Success);
 }
 
@@ -2752,6 +3663,7 @@ pub fn save_progress(force: bool) {
         total_episodes: trace.total_episodes,
         updated_at: nsh_core::time::unix_ms() as u64,
         work_key: trace.work_key.clone(),
+        duanju: state.portrait,
         synced: None,
         wire,
     };
@@ -2946,6 +3858,7 @@ pub fn resume_progress(entry: &ProgressEntry) {
     player_state.phase = PlayPhase::Loading;
     player_state.error.clear();
     player_state.playing = true;
+    player_state.portrait = entry.duanju;
     player_state.load_token += 1;
     player_state.position = 0.0;
     player_state.duration = 0.0;
@@ -2969,7 +3882,7 @@ pub fn resume_progress(entry: &ProgressEntry) {
                 let index = entry
                     .episode_index
                     .min(fetched.episodes.len().saturating_sub(1));
-                start_playback(&fetched, index);
+                start_playback_mode(&fetched, index, entry.duanju);
                 let mut state = player().get();
                 state.resume_at = if entry.completed() {
                     0.0

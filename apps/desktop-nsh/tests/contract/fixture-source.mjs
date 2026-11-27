@@ -47,7 +47,9 @@ function catalog(base) {
       vod_remarks: '更新至 2 集',
       vod_year: '2026',
       type_name: '科幻',
+      type_id: 1,
       vod_class: '科幻 / 悬疑',
+      vod_play_from: 'm3u8',
       vod_content: '<p>一段来自废弃中继站的录音。</p><p>受控测试内容。</p>',
       vod_play_url: [
         `第 1 集$http://127.0.0.1:PORT/media/ts/index.m3u8`,
@@ -61,7 +63,9 @@ function catalog(base) {
       vod_remarks: '单集',
       vod_year: '2026',
       type_name: '剧情',
+      type_id: 2,
       vod_class: '剧情 / 音乐',
+      vod_play_from: 'm3u8',
       vod_content: '午夜频道只剩一位主播。',
       vod_play_url: '第 1 集$http://127.0.0.1:PORT/media/master.m3u8',
     },
@@ -73,7 +77,9 @@ function catalog(base) {
       vod_remarks: '老版',
       vod_year: '2020',
       type_name: '科幻',
+      type_id: 1,
       vod_class: '科幻',
+      vod_play_from: 'm3u8',
       vod_content: '同名不同年，用于核对合并规则。',
       vod_play_url: '第 1 集$http://127.0.0.1:PORT/media/ts/index.m3u8',
     },
@@ -85,15 +91,71 @@ function catalog(base) {
       vod_pic: '',
       vod_year: '2025',
       type_name: '纪录',
+      type_id: 1,
       vod_class: '纪录',
       vod_content: '',
+      vod_play_from: 'm3u8',
       vod_play_url: `第 1 集$http://127.0.0.1:PORT/media/clip.mp4`,
+    },
+    {
+      vod_id: 7001,
+      vod_name: '短剧·甜宠一',
+      vod_pic: `${base}/media/poster.svg`,
+      vod_remarks: '更新至 3 集',
+      vod_year: '2026',
+      type_name: '短剧',
+      type_id: 81,
+      vod_class: '短剧 / 甜宠',
+      vod_play_from: 'm3u8',
+      vod_content: '<p>竖屏短剧夹具。</p>',
+      vod_play_url: [
+        `第 1 集$http://127.0.0.1:PORT/media/ts/index.m3u8`,
+        `第 2 集$http://127.0.0.1:PORT/media/fmp4/index.m3u8`,
+        `第 3 集$http://127.0.0.1:PORT/media/ts/index.m3u8`,
+      ].join('#'),
+    },
+    {
+      vod_id: 7002,
+      vod_name: '短剧·逆袭二',
+      vod_pic: `${base}/media/poster.svg`,
+      vod_remarks: '单集',
+      vod_year: '2025',
+      type_name: '短剧',
+      type_id: 82,
+      vod_class: '短剧 / 逆袭',
+      vod_play_from: 'm3u8',
+      vod_content: '逆袭题材夹具。',
+      vod_play_url: '第 1 集$http://127.0.0.1:PORT/media/master.m3u8',
+    },
+    {
+      vod_id: 7003,
+      vod_name: '短剧·甜宠三',
+      vod_pic: '',
+      vod_remarks: '',
+      vod_year: '2024',
+      type_name: '短剧',
+      type_id: 81,
+      vod_class: '短剧 / 甜宠',
+      vod_play_from: 'm3u8',
+      vod_content: '',
+      vod_play_url: '第 1 集$http://127.0.0.1:PORT/media/range/index.m3u8',
     },
   ];
 }
 
+const CATEGORY_CLASSES = [
+  { type_id: 1, type_name: '电影', type_pid: 0 },
+  { type_id: 2, type_name: '剧集', type_pid: 0 },
+  { type_id: 8, type_name: '短剧', type_pid: 0 },
+  { type_id: 81, type_name: '短剧·甜宠', type_pid: 8 },
+  { type_id: 82, type_name: '短剧·逆袭', type_pid: 8 },
+];
+
 function withPort(list, selfBase) {
-  return JSON.parse(JSON.stringify(list).replaceAll('127.0.0.1:PORT', selfBase));
+  // The catalog writes `http://127.0.0.1:PORT/...`; inject only host:port so
+  // the scheme is not duplicated.
+  const host = selfBase.replace(/^https?:\/\//, '');
+  return JSON.parse(JSON.stringify(list).replaceAll('127.0.0.1:PORT', host));
 }
 
 function json(res, status, body) {
@@ -197,8 +259,8 @@ const server = createServer((req, res) => {
 
   const ac = url.searchParams.get('ac');
   const list = withPort(catalog(selfBase), selfBase);
-  if (ac === 'videolist' && url.searchParams.get('wd')) {
-    json(res, 200, { code: 1, msg: '数据列表', page: 1, pagecount: 1, limit: '20', total: list.length, list });
+  if (ac === 'list') {
+    json(res, 200, { code: 1, msg: '数据列表', class: CATEGORY_CLASSES });
     return;
   }
   if (ac === 'videolist' && url.searchParams.get('ids')) {
@@ -209,6 +271,43 @@ const server = createServer((req, res) => {
       return;
     }
     json(res, 200, { code: 1, msg: '数据列表', page: 1, pagecount: 1, total: picked.length, list: picked });
+    return;
+  }
+  if (ac === 'videolist') {
+    const typeId = url.searchParams.get('t');
+    const keyword = url.searchParams.get('wd');
+    const paged = url.searchParams.has('pg');
+    let filtered = list;
+    if (typeId) {
+      const wanted = String(typeId);
+      filtered =
+        wanted === '8'
+          ? list.filter((item) => item.type_id === 81 || item.type_id === 82)
+          : list.filter((item) => String(item.type_id) === wanted);
+    } else if (keyword && paged) {
+      filtered = list.filter((item) => String(item.vod_name).includes(keyword));
+    } else if (keyword) {
+      // Global search keeps the original contract set; short-drama rows are
+      // reached through the short-drama/category routes instead.
+      filtered = list.filter((item) => item.type_id === 1 || item.type_id === 2);
+    }
+    if (typeId || paged) {
+      const page = Math.max(1, parseInt(url.searchParams.get('pg') || '1', 10) || 1);
+      const pageSize = 2;
+      const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+      const pageItems = filtered.slice((page - 1) * pageSize, page * pageSize);
+      json(res, 200, {
+        code: 1,
+        msg: '数据列表',
+        page,
+        pagecount: pageCount,
+        limit: String(pageSize),
+        total: filtered.length,
+        list: pageItems,
+      });
+      return;
+    }
+    json(res, 200, { code: 1, msg: '数据列表', page: 1, pagecount: 1, limit: '20', total: filtered.length, list: filtered });
     return;
   }
   json(res, 400, { error: 'unsupported fixture query', ac });

@@ -5,6 +5,7 @@ use crate::{
     discover::{self, Day, Item, Query},
     logbook,
     model::{Candidate, FavoriteEntry, ProgressEntry, api_url, encode_query, resolve_url},
+    source_browse::{self, Category, DuanjuSite, Page, Site},
 };
 use serde_json::Value;
 pub struct Login {
@@ -84,6 +85,9 @@ pub fn progress_payload(e: &ProgressEntry) -> Result<Value, ApiError> {
     }
     let mut r = e.wire.as_object().cloned().unwrap_or_default();
     for(k,v)in serde_json::json!({"title":e.title,"source_name":e.source_name,"cover":e.poster,"year":e.year,"index":e.episode_index+1,"total_episodes":e.total_episodes,"play_time":e.position.min(e.duration),"total_time":e.duration,"save_time":e.updated_at,"search_title":e.title}).as_object().unwrap(){r.insert(k.clone(),v.clone());}
+    if e.duanju {
+        r.insert("is_duanju".into(), serde_json::json!(true));
+    }
     r.entry("origin").or_insert(serde_json::json!("vod"));
     Ok(serde_json::json!({"key":e.key,"record":r}))
 }
@@ -128,6 +132,7 @@ pub fn progress_from_map(base: &str, map: &Value) -> Result<Vec<ProgressEntry>, 
             total_episodes: v["total_episodes"].as_u64().unwrap_or(0) as usize,
             updated_at: v["save_time"].as_u64().unwrap_or(0),
             work_key: format!("{title}\u{1f}{year}"),
+            duanju: boolean(v, "is_duanju"),
             synced: Some(true),
             wire: v.clone(),
         });
@@ -440,6 +445,167 @@ pub async fn bangumi_calendar(base: &str, token: &str) -> Result<Vec<Day>, ApiEr
     let response = send(request(api_url(base, "api/bangumi/calendar"), token), 20).await?;
     let value = parse_json(&response)?;
     discover::parse_calendar(base, &value).map_err(ApiError::BadResponse)
+}
+
+fn source_error(what: &str, error: ApiError) -> ApiError {
+    match error {
+        ApiError::Http(404) => ApiError::BadResponse(format!(
+            "{what}：这个源不在当前账号的可用列表里（可能被禁用、取消授权或已删除）；刷新源列表后重试"
+        )),
+        ApiError::Http(500) => ApiError::BadResponse(format!(
+            "{what}：源站暂时不可用或返回了异常数据；稍后重试或换一个源"
+        )),
+        other => other,
+    }
+}
+
+/// Sources the signed-in account may browse.
+pub async fn source_sites(base: &str, token: &str) -> Result<Vec<Site>, ApiError> {
+    let response = send(
+        request(api_url(base, "api/source-search/sources"), token),
+        20,
+    )
+    .await
+    .map_err(|error| source_error("读取片源列表失败", error))?;
+    source_browse::parse_sites(&parse_json(&response)?).map_err(ApiError::BadResponse)
+}
+
+pub async fn source_categories(
+    base: &str,
+    token: &str,
+    source: &str,
+) -> Result<Vec<Category>, ApiError> {
+    let response = send(
+        request(
+            api_url(
+                base,
+                &format!(
+                    "api/source-search/categories?source={}",
+                    encode_query(source)
+                ),
+            ),
+            token,
+        ),
+        20,
+    )
+    .await
+    .map_err(|error| source_error("读取片源分类失败", error))?;
+    source_browse::parse_categories(&parse_json(&response)?).map_err(ApiError::BadResponse)
+}
+
+pub async fn source_videos(
+    base: &str,
+    token: &str,
+    source: &str,
+    category: &str,
+    page: usize,
+) -> Result<Page, ApiError> {
+    let response = send(
+        request(
+            api_url(
+                base,
+                &format!(
+                    "api/source-search/videos?source={}&categoryId={}&page={page}",
+                    encode_query(source),
+                    encode_query(category)
+                ),
+            ),
+            token,
+        ),
+        25,
+    )
+    .await
+    .map_err(|error| source_error("读取片源列表失败", error))?;
+    source_browse::parse_page(base, &parse_json(&response)?).map_err(ApiError::BadResponse)
+}
+
+pub async fn source_search(
+    base: &str,
+    token: &str,
+    source: &str,
+    keyword: &str,
+    page: usize,
+) -> Result<Page, ApiError> {
+    let response = send(
+        request(
+            api_url(
+                base,
+                &format!(
+                    "api/source-search/search?source={}&keyword={}&page={page}",
+                    encode_query(source),
+                    encode_query(keyword)
+                ),
+            ),
+            token,
+        ),
+        25,
+    )
+    .await
+    .map_err(|error| source_error("源内搜索失败", error))?;
+    source_browse::parse_page(base, &parse_json(&response)?).map_err(ApiError::BadResponse)
+}
+
+/// Sources that expose a short-drama category. The server checks the source
+/// list itself; no account token is required by the route.
+pub async fn duanju_sites(base: &str, token: &str) -> Result<Vec<DuanjuSite>, ApiError> {
+    let response = send(request(api_url(base, "api/duanju/sources"), token), 30).await?;
+    source_browse::parse_duanju_sites(&parse_json(&response)?).map_err(ApiError::BadResponse)
+}
+
+pub async fn duanju_categories(
+    base: &str,
+    token: &str,
+    source: &str,
+) -> Result<Vec<Category>, ApiError> {
+    let response = send(
+        request(
+            api_url(
+                base,
+                &format!("api/duanju/categories?source={}", encode_query(source)),
+            ),
+            token,
+        ),
+        25,
+    )
+    .await
+    .map_err(|error| source_error("读取短剧分类失败", error))?;
+    source_browse::parse_duanju_categories(&parse_json(&response)?).map_err(ApiError::BadResponse)
+}
+
+pub async fn duanju_videos(
+    base: &str,
+    token: &str,
+    source: &str,
+    category: &str,
+    page: usize,
+) -> Result<Page, ApiError> {
+    let response = send(
+        request(
+            api_url(
+                base,
+                &format!(
+                    "api/duanju/videos?source={}&categoryId={}&page={page}",
+                    encode_query(source),
+                    encode_query(category)
+                ),
+            ),
+            token,
+        ),
+        25,
+    )
+    .await
+    .map_err(|error| source_error("读取短剧列表失败", error))?;
+    source_browse::parse_page(base, &parse_json(&response)?).map_err(ApiError::BadResponse)
+}
+
+pub async fn duanju_recommends(
+    base: &str,
+    token: &str,
+) -> Result<Vec<source_browse::Item>, ApiError> {
+    let response = send(request(api_url(base, "api/duanju/recommends"), token), 30).await?;
+    let page =
+        source_browse::parse_page(base, &parse_json(&response)?).map_err(ApiError::BadResponse)?;
+    Ok(page.items)
 }
 
 pub async fn detail(
