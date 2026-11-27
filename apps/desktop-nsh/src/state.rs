@@ -781,7 +781,12 @@ pub fn bootstrap() {
             stack: Vec::new(),
         });
     } else {
-        nav().set(Nav::default());
+        // First launch: offer the built-in instance instead of an empty box.
+        state.base = crate::model::DEFAULT_INSTANCE.to_owned();
+        nav().set(Nav {
+            route: Route::Connect,
+            stack: Vec::new(),
+        });
     }
     session().set(state);
     if !stored.demo_active && !stored.instance.is_empty() {

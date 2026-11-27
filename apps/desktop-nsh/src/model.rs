@@ -481,6 +481,13 @@ impl Default for Settings {
 // can never be read as this product's settings or library.
 const SETTINGS_KEY: &str = "moontv.nsh.settings.v1";
 
+/// Instance the client offers on first launch. Override at build time with
+/// `MOONTV_DEFAULT_INSTANCE`; users can still type a self-hosted address.
+pub const DEFAULT_INSTANCE: &str = match option_env!("MOONTV_DEFAULT_INSTANCE") {
+    Some(value) => value,
+    None => "https://moontv-plus.zhuning978.workers.dev",
+};
+
 pub fn load_settings() -> Settings {
     Storage::get_item(SETTINGS_KEY)
         .and_then(|raw| serde_json::from_str(&raw).ok())

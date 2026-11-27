@@ -215,9 +215,12 @@ fn connect_card() -> AnyElement {
         .gap(px(16.0))
         .child(
             view().gap(px(4.0)).child(h2("连接实例")).child(
-                text("支持带子路径的部署。实例地址会记住，密码只用于本次登录。".to_owned())
-                    .text_size(px(12.0))
-                    .text_color(MUTED),
+                text(
+                    "已预填官方实例，可改成自建地址。实例会记住，密码只用于登录，不会保存。"
+                        .to_owned(),
+                )
+                .text_size(px(12.0))
+                .text_color(MUTED),
             ),
         )
         .child(connect_form())
