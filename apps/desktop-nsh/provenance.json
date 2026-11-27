@@ -1,0 +1,141 @@
+{
+  "date": "2026-11-24",
+  "baseline": "5b132342e7d36282e67edd73d188468d8c446ac6",
+  "reference": "C:/project/MoonTVPlus-NSH",
+  "authorization": "User authorized selective migration of independently newly written Rust/NSH implementation; original remains read-only",
+  "license": "Original repository README declares MIT; no top-level LICENSE found at baseline. Independently authored reference files have no separate license declaration; preserve attribution and do not claim third-party source ownership. NSH Apache-2.0 remains external pinned dependency.",
+  "excluded": [
+    ".tools",
+    "target",
+    "profile",
+    "tokens",
+    ".runtime",
+    "dist",
+    "media",
+    "old mock scripts"
+  ],
+  "files": [
+    {
+      "source": "C:/project/MoonTVPlus-NSH/src/api.rs",
+      "destination": "apps/desktop-nsh/src/api.rs",
+      "originalSha256": "67bf4394eaf6750b4bb9c4615516ee2a1eee9cc021590d298c47a241649ae63f",
+      "reason": "Independent native domain/state/media infrastructure; API and security contracts audited and revised in destination"
+    },
+    {
+      "source": "C:/project/MoonTVPlus-NSH/src/demo.rs",
+      "destination": "apps/desktop-nsh/src/demo.rs",
+      "originalSha256": "9b0aa52609de04dd3fdd41366a6ba96dd750f1aa3204f38583360d5e0c0d86e1",
+      "reason": "Independent native domain/state/media infrastructure; API and security contracts audited and revised in destination"
+    },
+    {
+      "source": "C:/project/MoonTVPlus-NSH/src/lib.rs",
+      "destination": "apps/desktop-nsh/src/lib.rs",
+      "originalSha256": "61b09a0e1e7cd5e0538824dbbe29fd2ce0707024b97aa3a13b2aaa0c5530f6b1",
+      "reason": "Independent native domain/state/media infrastructure; API and security contracts audited and revised in destination"
+    },
+    {
+      "source": "C:/project/MoonTVPlus-NSH/src/logbook.rs",
+      "destination": "apps/desktop-nsh/src/logbook.rs",
+      "originalSha256": "c32d24e6aa7b2929057f593db4d7ebaaffcdcd29ed7133fec538eda4e870dffd",
+      "reason": "Independent native domain/state/media infrastructure; API and security contracts audited and revised in destination"
+    },
+    {
+      "source": "C:/project/MoonTVPlus-NSH/src/main.rs",
+      "destination": "apps/desktop-nsh/src/main.rs",
+      "originalSha256": "cef2ec85db1ab3916c1c0817c466e65445708aae92988e3474aee510ab10fdf9",
+      "reason": "Independent native domain/state/media infrastructure; API and security contracts audited and revised in destination"
+    },
+    {
+      "source": "C:/project/MoonTVPlus-NSH/src/media_server.rs",
+      "destination": "apps/desktop-nsh/src/media_server.rs",
+      "originalSha256": "db6890e7c15719d9efd79088b5cf58a505a0b6774acc0aafc1f9261b7cd85204",
+      "reason": "Independent native domain/state/media infrastructure; API and security contracts audited and revised in destination"
+    },
+    {
+      "source": "C:/project/MoonTVPlus-NSH/src/model.rs",
+      "destination": "apps/desktop-nsh/src/model.rs",
+      "originalSha256": "82fe9365c82a824eb18eed7c71559b44318421c26ac9080eaeddf3aa73313bad",
+      "reason": "Independent native domain/state/media infrastructure; API and security contracts audited and revised in destination"
+    },
+    {
+      "source": "C:/project/MoonTVPlus-NSH/src/probe.rs",
+      "destination": "apps/desktop-nsh/src/probe.rs",
+      "originalSha256": "6228eee1d4fadc276e586aa71250095788f3d0ff2aa72f0a0ee0cfaf133fa94f",
+      "reason": "Independent native domain/state/media infrastructure; API and security contracts audited and revised in destination"
+    },
+    {
+      "source": "C:/project/MoonTVPlus-NSH/src/relay.rs",
+      "destination": "apps/desktop-nsh/src/relay.rs",
+      "originalSha256": "8b01b5b51569a9d014febe099c79289e83cf33d0023c997efa491385a1508bcb",
+      "reason": "Independent native domain/state/media infrastructure; API and security contracts audited and revised in destination"
+    },
+    {
+      "source": "C:/project/MoonTVPlus-NSH/src/state.rs",
+      "destination": "apps/desktop-nsh/src/state.rs",
+      "originalSha256": "a88db1fbd56ae2a9c19f41cd254eb1abf3ba11d72a3f216cdf0912b286e2c513",
+      "reason": "Independent native domain/state/media infrastructure; API and security contracts audited and revised in destination"
+    },
+    {
+      "source": "C:/project/MoonTVPlus-NSH/src/ui/icons.rs",
+      "destination": "apps/desktop-nsh/src/ui/icons.rs",
+      "originalSha256": "effd0e7c74a7e61a497c239bd1049a7b7d594db6634ae4d12c6f485e43cb7c57",
+      "reason": "Preserve user-tested native UI direction"
+    },
+    {
+      "source": "C:/project/MoonTVPlus-NSH/src/ui/mod.rs",
+      "destination": "apps/desktop-nsh/src/ui/mod.rs",
+      "originalSha256": "79a055018a5a23d6bb23c84662f8c9715319b9fa74524cfe110a98afa6a68756",
+      "reason": "Preserve user-tested native UI direction"
+    },
+    {
+      "source": "C:/project/MoonTVPlus-NSH/src/ui/pages.rs",
+      "destination": "apps/desktop-nsh/src/ui/pages.rs",
+      "originalSha256": "11a0e73e2e527535a19e1512e17d0ba63cce80e542842bb2ad05b03db18a7362",
+      "reason": "Preserve user-tested native UI direction"
+    },
+    {
+      "source": "C:/project/MoonTVPlus-NSH/src/ui/player.rs",
+      "destination": "apps/desktop-nsh/src/ui/player.rs",
+      "originalSha256": "ba03b59b7a2f97d8c872e9c51a41b677cf6fa36f507b056512cddf72ff6ff78b",
+      "reason": "Preserve user-tested native UI direction"
+    },
+    {
+      "source": "C:/project/MoonTVPlus-NSH/src/ui/shell.rs",
+      "destination": "apps/desktop-nsh/src/ui/shell.rs",
+      "originalSha256": "badcaef941709b86af24035658a38bf0ae23551e5eee706bf12f5d6022293257",
+      "reason": "Preserve user-tested native UI direction"
+    },
+    {
+      "source": "C:/project/MoonTVPlus-NSH/src/ui/theme.rs",
+      "destination": "apps/desktop-nsh/src/ui/theme.rs",
+      "originalSha256": "05b4770d85f58a7f6f182d6f05ef53904d67a77f48d71f2080c402340669163d",
+      "reason": "Preserve user-tested native UI direction"
+    },
+    {
+      "source": "C:/project/MoonTVPlus-NSH/src/ui/widgets.rs",
+      "destination": "apps/desktop-nsh/src/ui/widgets.rs",
+      "originalSha256": "d1d67c9df61a2e0f69be6997a24fa9724806ada065ca86ba70353677efbc810d",
+      "reason": "Preserve user-tested native UI direction"
+    },
+    {
+      "source": "C:/project/MoonTVPlus-NSH/scripts/generate-media.mjs",
+      "destination": "apps/desktop-nsh/scripts/generate-media.mjs",
+      "originalSha256": "f280523f06d516a47da8da68ef1553d16e6efec8c374cc2771ad90dbd248410f",
+      "reason": "Regenerate controlled media, replacing machine-specific ffmpeg path"
+    }
+  ],
+  "unowned": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "f44c6d7e77891c0fd201b8378c1f2e646456bc4f3715832a0a430e6d511e3ec5"
+    },
+    {
+      "path": "package.json",
+      "sha256": "4f948a2e5694a5d58117aef120d535a00fd42bfac876d0df78a2c18871626300"
+    },
+    {
+      "path": ".github/workflows/verify-notes.yml",
+      "sha256": "4b0d8417d56d41c3405b9a2499f4155539c494d6d5b1b81d35b085f9b553b812"
+    }
+  ]
+}

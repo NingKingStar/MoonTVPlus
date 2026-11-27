@@ -1,0 +1,39 @@
+﻿[package]
+name = "moontv-native"
+version = "0.4.0"
+edition = "2024"
+publish = false
+default-run = "moontv-native"
+
+[workspace]
+
+[[bin]]
+name = "moontv-native"
+path = "src/main.rs"
+
+
+
+
+[dependencies]
+nsh-core = { git = "https://github.com/longbridge/nsh", rev = "2f51d8611677c8a6bbad937b39756e8d0cc45350", default-features = false }
+# `net` is what makes `fetch`, remote images and the relay's upstream HTTP
+# work; the platform's default features are off on purpose (no JS, no WebView).
+nsh-platform-windows = { git = "https://github.com/longbridge/nsh", rev = "2f51d8611677c8a6bbad937b39756e8d0cc45350", default-features = false, features = ["media", "net"] }
+log = "0.4"
+env_logger = "0.11"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["time", "sync", "rt", "macros"] }
+url = "2.5.9"
+percent-encoding = "2"
+sha2 = "0.10"
+ureq = { version = "=2.12.1", default-features = false, features = ["tls"] }
+windows = { version = "=0.62.2", features = ["Win32_Media_Audio", "Win32_Media_Audio_Endpoints", "Win32_System_Com", "Win32_System_Com_StructuredStorage"] }
+
+[profile.dev]
+debug = 0
+
+[profile.release]
+debug = 0
+
+# Decode opaque server token metadata only for expiry scheduling, never to trust roles.

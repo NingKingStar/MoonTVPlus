@@ -1,0 +1,466 @@
+{
+  "generatedAt": "2026-11-24T08:32:25.343Z",
+  "baseline": "5b132342e7d36282e67edd73d188468d8c446ac6",
+  "kind": "isolated-instance-contract",
+  "runDir": "C:\\Users\\admin\\AppData\\Local\\Temp\\moontv-nsh-contract-20261124T083215",
+  "instance": "http://127.0.0.1:52068/",
+  "database": "C:\\Users\\admin\\AppData\\Local\\Temp\\moontv-nsh-contract-20261124T083215\\data\\moontv.db",
+  "fixture": {
+    "base": "http://127.0.0.1:52067",
+    "mediaRoot": "C:\\project\\MoonTVPlus\\apps\\desktop-nsh\\media"
+  },
+  "checks": [
+    {
+      "id": "C01",
+      "title": "server-config 提供 StorageType 与 Turnstile 开关",
+      "ok": true,
+      "detail": "HTTP 200 StorageType=d1 turnstile=false",
+      "evidence": {
+        "status": 200,
+        "StorageType": "d1"
+      }
+    },
+    {
+      "id": "C02",
+      "title": "错误密码是 401，不泄露账号存在性",
+      "ok": true,
+      "detail": "HTTP 401 用户名或密码错误",
+      "evidence": {
+        "status": 401
+      }
+    },
+    {
+      "id": "C03",
+      "title": "空用户名是参数错误 400",
+      "ok": true,
+      "detail": "HTTP 400 用户名不能为空",
+      "evidence": {
+        "status": 400
+      }
+    },
+    {
+      "id": "C04",
+      "title": "密码登录返回 bearer token 与 owner 身份",
+      "ok": true,
+      "detail": "HTTP 200 role=owner tokenId=2fd2b6…",
+      "evidence": {
+        "status": 200,
+        "role": "owner",
+        "hasRefresh": true
+      }
+    },
+    {
+      "id": "C05",
+      "title": "refresh 有效期是 60 天",
+      "ok": true,
+      "detail": "60.000 天",
+      "evidence": {
+        "refreshAgeDays": 60
+      }
+    },
+    {
+      "id": "C06",
+      "title": "无凭据访问收藏是 401",
+      "ok": true,
+      "detail": "HTTP 401",
+      "evidence": {
+        "status": 401
+      }
+    },
+    {
+      "id": "C07",
+      "title": "无法解析的 token 是 401",
+      "ok": true,
+      "detail": "HTTP 401",
+      "evidence": {
+        "status": 401
+      }
+    },
+    {
+      "id": "C08",
+      "title": "搜索返回完整条目：集表/标题/年份/类型/片源名",
+      "ok": true,
+      "detail": "HTTP 200 results=3 episodes=2 year=2026",
+      "evidence": {
+        "status": 200,
+        "count": 3,
+        "episodeTitles": [
+          "第 1 集",
+          "第 2 集"
+        ]
+      }
+    },
+    {
+      "id": "C09",
+      "title": "同名不同年作为不同条目返回（合并在客户端）",
+      "ok": true,
+      "detail": "2026=2026 2020=2020",
+      "evidence": {
+        "a1001": "2026",
+        "a1003": "2020"
+      }
+    },
+    {
+      "id": "C10",
+      "title": "集表只接受 .m3u8：仅 MP4 的条目被服务端丢弃",
+      "ok": true,
+      "detail": "1004 未出现在结果中",
+      "evidence": {
+        "present": false
+      }
+    },
+    {
+      "id": "C11",
+      "title": "空查询返回空结果而不是错误",
+      "ok": true,
+      "detail": "HTTP 200 results=0",
+      "evidence": {
+        "status": 200
+      }
+    },
+    {
+      "id": "C12",
+      "title": "source-detail 返回实时集表、年份与去标签简介",
+      "ok": true,
+      "detail": "HTTP 200 episodes=2 descLen=21",
+      "evidence": {
+        "status": 200,
+        "episodes": [
+          "http://127.0.0.1:52068/api/proxy-m3u8?url=http%3A%2F%2Fhttp%3A%2F%2F127.0.0.1%3A52067%2Fmedia%2Fts%2Findex.m3u8",
+          "http://127.0.0.1:52068/api/proxy-m3u8?url=http%3A%2F%2Fhttp%3A%2F%2F127.0.0.1%3A52067%2Fmedia%2Ffmp4%2Findex.m3u8"
+        ]
+      }
+    },
+    {
+      "id": "C13",
+      "title": "APP UA + 已配置源：集地址改写为站内去广告代理",
+      "ok": true,
+      "detail": "HTTP 200 episodes=2 proxied=true",
+      "evidence": {
+        "vary": "RSC, Next-Router-State-Tree, Next-Router-Prefetch, User-Agent",
+        "first": "http://127.0.0.1:52068/api/proxy-m3u8?url=http%3A%2F%2Fhttp%3A%2F%2F127.0.0.1%3A52067%2Fmedia%2Fts%2Findex.m3u8"
+      }
+    },
+    {
+      "id": "C14",
+      "title": "浏览器 UA 不改写，与 APP 行为分离",
+      "ok": true,
+      "detail": "HTTP 200 proxied=false",
+      "evidence": {
+        "first": "http://http://127.0.0.1:52067/media/ts/index.m3u8"
+      }
+    },
+    {
+      "id": "C15",
+      "title": "无可用集表的详情返回可识别错误（不是空 200）",
+      "ok": true,
+      "detail": "HTTP 500 详情没有可用剧集",
+      "evidence": {
+        "status": 500,
+        "error": "详情没有可用剧集"
+      }
+    },
+    {
+      "id": "C16",
+      "title": "非法视频 ID 被拒绝 400",
+      "ok": true,
+      "detail": "HTTP 400 无效的视频ID格式",
+      "evidence": {
+        "status": 400
+      }
+    },
+    {
+      "id": "C17",
+      "title": "未知片源被拒绝 400",
+      "ok": true,
+      "detail": "HTTP 400 无效的API来源",
+      "evidence": {
+        "status": 400
+      }
+    },
+    {
+      "id": "C18",
+      "title": "SSE 搜索：start / source_result / complete 与计数",
+      "ok": true,
+      "detail": "HTTP 200 ct=text/event-stream types=start,source_result,source_result,complete",
+      "evidence": {
+        "start": {
+          "type": "start",
+          "query": "回声",
+          "totalSources": 2,
+          "timestamp": 1795509142922
+        },
+        "okCount": 3,
+        "complete": {
+          "type": "complete",
+          "totalResults": 3,
+          "completedSources": 2,
+          "timestamp": 1795509142926
+        }
+      }
+    },
+    {
+      "id": "C18b",
+      "title": "上游 500 在 SSE 里只是空 source_result，没有 source_error",
+      "ok": true,
+      "detail": "fixture-b results=0 source_error=false",
+      "evidence": {
+        "failedAsEmpty": {
+          "type": "source_result",
+          "source": "fixture-b",
+          "sourceName": "夹具 B",
+          "results": [],
+          "timestamp": 1795509142926
+        }
+      }
+    },
+    {
+      "id": "C19",
+      "title": "收藏完整载荷往返：字段不丢、key 为 source+id",
+      "ok": true,
+      "detail": "HTTP 200 fields=source_name,total_episodes,title,year,cover,save_time,search_title,origin,is_completed,vod_remarks",
+      "evidence": {
+        "saved": {
+          "source_name": "夹具 A",
+          "total_episodes": 2,
+          "title": "回声档案",
+          "year": "2026",
+          "cover": "http://127.0.0.1:52067media/poster.svg",
+          "save_time": 1795509143067,
+          "search_title": "回声档案",
+          "origin": "vod",
+          "is_completed": false,
+          "vod_remarks": "更新至 2 集"
+        }
+      }
+    },
+    {
+      "id": "C20",
+      "title": "按 key 读取单条收藏",
+      "ok": true,
+      "detail": "HTTP 200",
+      "evidence": {
+        "status": 200
+      }
+    },
+    {
+      "id": "C21",
+      "title": "收藏缺少 source_name 被拒绝 400",
+      "ok": true,
+      "detail": "HTTP 400",
+      "evidence": {
+        "status": 400
+      }
+    },
+    {
+      "id": "C22",
+      "title": "收藏 key 缺少 +id 被拒绝 400",
+      "ok": true,
+      "detail": "HTTP 400",
+      "evidence": {
+        "status": 400
+      }
+    },
+    {
+      "id": "C23",
+      "title": "观看记录写入/读回：1 基集号与秒单位不失真",
+      "ok": true,
+      "detail": "HTTP 200 index=2 play_time=37.25 total_time=1201.5",
+      "evidence": {
+        "stored": {
+          "title": "回声档案",
+          "source_name": "夹具 A",
+          "cover": "http://127.0.0.1:52067media/poster.svg",
+          "year": "2026",
+          "index": 2,
+          "total_episodes": 2,
+          "play_time": 37.25,
+          "total_time": 1201.5,
+          "save_time": 1795509143183,
+          "search_title": "回声档案",
+          "is_anime": false,
+          "is_duanju": false
+        }
+      }
+    },
+    {
+      "id": "C24",
+      "title": "origin 不落库，但 live_ 前缀可用于排除直播记录",
+      "ok": true,
+      "detail": "origin=(未保存) is_anime=false is_duanju=false",
+      "evidence": {
+        "savedColumns": [
+          "title",
+          "source_name",
+          "cover",
+          "year",
+          "index",
+          "total_episodes",
+          "play_time",
+          "total_time",
+          "save_time",
+          "search_title",
+          "is_anime",
+          "is_duanju"
+        ]
+      }
+    },
+    {
+      "id": "C25",
+      "title": "集号 0 被拒绝（服务端要求 1 基）",
+      "ok": true,
+      "detail": "HTTP 400",
+      "evidence": {
+        "status": 400
+      }
+    },
+    {
+      "id": "C26",
+      "title": "同 key 再次写入是覆盖更新，不产生重复条目",
+      "ok": true,
+      "detail": "HTTP 200 keys=1 play_time=300",
+      "evidence": {
+        "play_time": 300
+      }
+    },
+    {
+      "id": "C27",
+      "title": "刷新保持 tokenId/refreshToken/60 天到期，只换 access 时间戳",
+      "ok": true,
+      "detail": "HTTP 200 delta=2217 ms",
+      "evidence": {
+        "status": 200
+      }
+    },
+    {
+      "id": "C28",
+      "title": "刷新后的 token 立即可用于业务请求",
+      "ok": true,
+      "detail": "HTTP 200",
+      "evidence": {
+        "status": 200
+      }
+    },
+    {
+      "id": "C29",
+      "title": "过期的 access 部分仍可在 60 天内刷新",
+      "ok": true,
+      "detail": "HTTP 200",
+      "evidence": {
+        "status": 200
+      }
+    },
+    {
+      "id": "C30",
+      "title": "60 天到期后刷新是 401",
+      "ok": true,
+      "detail": "HTTP 401 Refresh token expired",
+      "evidence": {
+        "status": 401
+      }
+    },
+    {
+      "id": "C31",
+      "title": "伪造 refreshToken 被拒绝 401",
+      "ok": true,
+      "detail": "HTTP 401",
+      "evidence": {
+        "status": 401
+      }
+    },
+    {
+      "id": "C32",
+      "title": "未开启代理模式的源访问代理是 403（权限拒绝不是会话过期）",
+      "ok": true,
+      "detail": "HTTP 403 Proxy mode not enabled for this source",
+      "evidence": {
+        "status": 403
+      }
+    },
+    {
+      "id": "C33",
+      "title": "封禁账号刷新是 403",
+      "ok": true,
+      "detail": "HTTP 403 User banned",
+      "evidence": {
+        "status": 403
+      }
+    },
+    {
+      "id": "C34",
+      "title": "连续失败登录触发 429 并带 Retry-After",
+      "ok": true,
+      "detail": "状态序列 401→401→401→401→401→429 retry-after=3600",
+      "evidence": {
+        "banStatuses": [
+          {
+            "status": 401
+          },
+          {
+            "status": 401
+          },
+          {
+            "status": 401
+          },
+          {
+            "status": 401
+          },
+          {
+            "status": 401
+          },
+          {
+            "status": 429,
+            "retryAfter": "3600"
+          }
+        ],
+        "retryAfter": "3600"
+      }
+    },
+    {
+      "id": "C35",
+      "title": "退出登录后旧凭据不能刷新（撤销真实生效）",
+      "ok": true,
+      "detail": "logout=200 refresh=401",
+      "evidence": {
+        "logout": 200,
+        "refresh": 401
+      }
+    },
+    {
+      "id": "C36",
+      "title": "按 key 删除收藏是幂等的，未清空其它数据",
+      "ok": true,
+      "detail": "HTTP 200 remaining=0",
+      "evidence": {
+        "status": 200
+      }
+    },
+    {
+      "id": "C37",
+      "title": "按 key 删除播放记录",
+      "ok": true,
+      "detail": "HTTP 200 remaining=0",
+      "evidence": {
+        "status": 200
+      }
+    },
+    {
+      "id": "R01",
+      "title": "真实客户端代码（src/api.rs）走完登录/搜索/详情/收藏/记录/刷新/退出",
+      "ok": true,
+      "detail": "cargo test --test live_contract exit=0",
+      "evidence": {
+        "log": "C:\\Users\\admin\\AppData\\Local\\Temp\\moontv-nsh-contract-20261124T083215\\logs\\cargo-live-contract.log"
+      }
+    }
+  ],
+  "notes": [
+    "test databases are created only under this run directory; .data is never read",
+    "configured sources: fixture-a, fixture-b; banned account: nsh-contract-banned"
+  ],
+  "summary": {
+    "total": 39,
+    "passed": 39,
+    "failed": 0
+  }
+}
