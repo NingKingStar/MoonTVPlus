@@ -502,6 +502,9 @@ pub struct PlayerState {
     pub portrait: bool,
     pub muted: bool,
     pub notice: String,
+    /// Auto-skip intro already fired for this episode/load; manual seeks
+    /// back into the intro should not be fought by the setting.
+    pub intro_skipped: bool,
     /// Sources already tried for this episode after media errors. Reset when
     /// a new episode/source is started manually.
     pub fallback_tried: Vec<String>,
@@ -541,6 +544,7 @@ impl Default for PlayerState {
             portrait: false,
             muted: false,
             notice: String::new(),
+            intro_skipped: false,
             fallback_tried: Vec::new(),
             fallback_error: String::new(),
         }
@@ -1069,6 +1073,33 @@ pub fn update_settings(update: impl FnOnce(&mut Settings)) {
     update(&mut value);
     settings().set(value.clone());
     save_settings(&value);
+}
+
+pub fn set_playback_rate(rate: f32) {
+    let rate = crate::model::normalize_rate(rate);
+    update_settings(|settings| settings.playback_rate = rate);
+}
+
+pub fn step_playback_rate(delta: i32) {
+    let next = crate::model::step_rate(settings().get().playback_rate, delta);
+    set_playback_rate(next);
+    toast(
+        format!("播放速度：{}", crate::model::format_rate(next)),
+        ToastTone::Info,
+    );
+    logbook::event(
+        "player_rate",
+        serde_json::json!({"rate": next, "how": "keyboard"}),
+    );
+}
+
+pub fn mark_intro_skipped() {
+    let mut state = player().get();
+    state.intro_skipped = true;
+    // A pending resume must not seek back into the intro after the skip.
+    state.resume_done = true;
+    state.resume_at = 0.0;
+    player().set(state);
 }
 
 pub fn save_library_now() {
@@ -3406,6 +3437,7 @@ fn start_playback_mode(candidate: &Candidate, index: usize, portrait: bool) {
     state.portrait = portrait;
     state.muted = false;
     state.notice.clear();
+    state.intro_skipped = false;
     state.fallback_tried.clear();
     state.fallback_error.clear();
     player().set(state);
@@ -3452,6 +3484,7 @@ pub fn play_index(index: usize, resume: bool) {
     state.resume_attempts = 0;
     state.resume_done = false;
     state.notice.clear();
+    state.intro_skipped = false;
     state.fallback_tried.clear();
     state.fallback_error.clear();
     player().set(state);
@@ -3920,6 +3953,7 @@ pub fn retry() {
     state.auto_in = None;
     state.auto_token += 1;
     state.notice.clear();
+    state.intro_skipped = false;
     state.fallback_tried.clear();
     state.fallback_error.clear();
     // A same URL would leave the native video source untouched; force a

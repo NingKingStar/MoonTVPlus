@@ -11,7 +11,10 @@ use nsh_core::{
 };
 
 use crate::{
-    model::{Candidate, format_time},
+    model::{
+        Candidate, PLAYBACK_RATES, format_rate, format_time, in_intro_window, in_outro_window,
+        intro_skip_target, normalize_rate,
+    },
     state::{self, PanelTab, PlayPhase},
     ui::{
         icons::{Icon, icon},
@@ -107,6 +110,17 @@ pub fn PlayerPage() -> impl IntoElement {
                     serde_json::json!({"delta": delta, "to": target}),
                 );
             },
+        );
+    }
+    for (key, delta) in [("[", -1_i32), ("]", 1_i32)] {
+        on_key_with(
+            key,
+            KeyOptions {
+                when: When::NotEditing,
+                for_focus: true,
+                ..Default::default()
+            },
+            move |_| state::step_playback_rate(delta),
         );
     }
     // F11 is the runner's reserved native fullscreen key; follow the actual
@@ -207,6 +221,7 @@ pub fn PlayerPage() -> impl IntoElement {
             .paused(move || !video_playing.get())
             .muted(move || video_muted.get())
             .volume(move || settings.get().volume)
+            .rate(move || normalize_rate(settings.get().playback_rate))
             .focusable(true)
             .on_focus(move || {
                 crate::logbook::event("player_focus", serde_json::json!("video"));
@@ -234,6 +249,7 @@ pub fn PlayerPage() -> impl IntoElement {
                 state::observe_progress(progress.current_time as f64, progress.duration as f64);
                 let token = state::player().get().load_token;
                 maybe_resume(video_ref, token, progress);
+                maybe_auto_skip_intro(video_ref, progress);
             })
             .on_buffer(move |buffering: &bool| {
                 state::observe_buffering(*buffering);
@@ -560,6 +576,42 @@ fn maybe_resume(video: ElementRef, token: u64, progress: &VideoProgress) {
     }
 }
 
+fn maybe_auto_skip_intro(video: ElementRef, progress: &VideoProgress) {
+    let settings = state::settings().get();
+    if !settings.auto_skip_intro {
+        return;
+    }
+    let p = state::player().get();
+    if p.phase != PlayPhase::Ready || p.intro_skipped {
+        return;
+    }
+    let duration = if progress.duration > 0.0 {
+        progress.duration as f64
+    } else {
+        p.duration
+    };
+    let position = progress.current_time as f64;
+    let Some(target) = intro_skip_target(duration, settings.intro_seconds) else {
+        return;
+    };
+    if !p.resume_done && p.resume_at > target {
+        // Resume is already past the intro; do not jump backwards to the
+        // intro edge and strand the user there.
+        return;
+    }
+    if !in_intro_window(position, duration, settings.intro_seconds) {
+        return;
+    }
+    state::mark_intro_skipped();
+    video.seek(target);
+    state::set_position_after_seek(target);
+    state::toast("已自动跳过片头", state::ToastTone::Success);
+    crate::logbook::event(
+        "player_skip_intro",
+        serde_json::json!({"to": target, "auto": true}),
+    );
+}
+
 fn overlays(video: ElementRef) -> AnyElement {
     let player = state::player();
     let phase = computed(move || player.get().phase);
@@ -762,6 +814,99 @@ fn overlays(video: ElementRef) -> AnyElement {
                 )
                 .into_element()
         }))
+        .child(skip_prompt(video))
+        .into_element()
+}
+
+fn skip_prompt(video: ElementRef) -> AnyElement {
+    let box_view = view()
+        .absolute()
+        .right(px(18.0))
+        .bottom(px(18.0))
+        .pointer_events(PointerEvents::Auto);
+    box_view
+        .child(dynamic(move || {
+            let p = state::player().get();
+            let settings = state::settings().get();
+            if p.phase != PlayPhase::Ready {
+                return view().into_element();
+            }
+            if !settings.auto_skip_intro
+                && in_intro_window(p.position, p.duration, settings.intro_seconds)
+                && let Some(target) = intro_skip_target(p.duration, settings.intro_seconds)
+            {
+                return button("跳过片头", Btn::Secondary, move || {
+                    video.seek(target);
+                    state::set_position_after_seek(target);
+                    state::mark_intro_skipped();
+                    crate::logbook::event(
+                        "player_skip_intro",
+                        serde_json::json!({"to": target, "auto": false}),
+                    );
+                })
+                .into_element();
+            }
+            if p.can_next() && in_outro_window(p.position, p.duration, settings.outro_seconds) {
+                return button("下一集", Btn::Secondary, move || {
+                    state::cancel_auto_next();
+                    state::next_episode(false);
+                })
+                .into_element();
+            }
+            view().into_element()
+        }))
+        .into_element()
+}
+
+fn rate_options() -> AnyElement {
+    let current = normalize_rate(state::settings().get().playback_rate);
+    view()
+        .flex_row()
+        .items_center()
+        .gap(px(5.0))
+        .child(
+            text("播放速度".to_owned())
+                .text_size(px(9.5))
+                .text_color(FAINT),
+        )
+        .children(PLAYBACK_RATES.iter().copied().map(|rate| {
+            let active = (rate - current).abs() < 0.001;
+            view()
+                .h(px(26.0))
+                .px(px(8.0))
+                .rounded(px(6.0))
+                .bg(if active { DEMO_TINT } else { RAISED })
+                .border_1()
+                .border_color(if active {
+                    alpha(0xe9b872, 0.45)
+                } else {
+                    BORDER
+                })
+                .items_center()
+                .justify_center()
+                .focusable(true)
+                .role(AccessibilityRole::Button)
+                .label(format!("播放速度 {}", format_rate(rate)))
+                .hover(|s| s.bg(HOVER))
+                .on_press(move || {
+                    state::set_playback_rate(rate);
+                    crate::logbook::event(
+                        "player_rate",
+                        serde_json::json!({"rate": rate, "how": "menu"}),
+                    );
+                })
+                .child(
+                    text(format_rate(rate))
+                        .text_size(px(10.0))
+                        .font_weight(if active {
+                            FontWeight::SEMIBOLD
+                        } else {
+                            FontWeight::MEDIUM
+                        })
+                        .text_color(if active { ACCENT } else { MUTED }),
+                )
+                .into_element()
+        }))
         .into_element()
 }
 
@@ -773,7 +918,7 @@ fn control_bar(video: ElementRef, track_width: Signal<f32>) -> AnyElement {
     let progress = computed(move || player.get().progress());
     let muted = computed(move || player.get().muted);
     view()
-        .h(px(64.0))
+        .h(px(104.0))
         .px(px(16.0))
         .bg(rgb(0x0b0d10))
         .border_t_1()
@@ -817,6 +962,7 @@ fn control_bar(video: ElementRef, track_width: Signal<f32>) -> AnyElement {
                         ),
                 ),
         )
+        .child(rate_options())
         .child(
             view()
                 .flex_row()

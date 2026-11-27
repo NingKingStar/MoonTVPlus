@@ -3635,22 +3635,134 @@ fn playback_section() -> AnyElement {
             .child(divider_line())
             .child(
                 view()
+                    .flex_row()
+                    .flex_wrap()
+                    .gap(px(12.0))
+                    .child(seconds_field(
+                        "片头秒数",
+                        stored.get().intro_seconds,
+                        "0 = 关闭；片头区间内显示「跳过片头」",
+                        move |value| state::update_settings(|settings| settings.intro_seconds = value),
+                    ))
+                    .child(seconds_field(
+                        "片尾秒数",
+                        stored.get().outro_seconds,
+                        "0 = 关闭；临近片尾显示「下一集」",
+                        move |value| state::update_settings(|settings| settings.outro_seconds = value),
+                    )),
+            )
+            .child(
+                view()
+                    .flex_row()
+                    .items_center()
+                    .justify_between()
+                    .gap_3()
+                    .child(
+                        view()
+                            .flex_1()
+                            .gap(px(2.0))
+                            .child(
+                                text("自动跳过片头".to_owned())
+                                    .text_size(px(13.0))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(TEXT),
+                            )
+                            .child(
+                                text("开启后进入片头区间直接 seek；关闭时保留手动按钮".to_owned())
+                                    .text_size(px(10.5))
+                                    .text_color(MUTED)
+                                    .number_of_lines(2),
+                            ),
+                    )
+                    .child(dynamic(move || {
+                        switch(stored.get().auto_skip_intro, move |on| {
+                            state::update_settings(|settings| settings.auto_skip_intro = on);
+                            state::toast(
+                                if on { "已开启自动跳过片头" } else { "已关闭自动跳过片头" },
+                                ToastTone::Info,
+                            );
+                        })
+                    })),
+            )
+            .child(divider_line())
+            .child(
+                view()
                     .gap(px(5.0))
                     .child(field_label("快捷键"))
                     .child(
-                        text("Ctrl+K 搜索 · F 播放区全屏 · F11 主区全屏 · Esc 退出全屏 · Space 暂停 · ←/→ 5 秒".to_owned())
+                        text("Ctrl+K 搜索 · F 播放区全屏 · F11 主区全屏 · Esc 退出全屏 · Space 暂停 · ←/→ 5 秒 · [ / ] 倍速".to_owned())
                             .text_size(px(11.0))
                             .text_color(MUTED)
                             .line_height(nsh_core::LineHeight::Multiple(1.6)),
                     )
                     .child(
-                        text("输入框聚焦时，F、空格和方向键只编辑文字；这是原生焦点隔离。".to_owned())
+                        text("输入框聚焦时，F、空格、方向键和 [ / ] 只编辑文字；这是原生焦点隔离。".to_owned())
                             .text_size(px(10.5))
                             .text_color(FAINT)
                             .line_height(nsh_core::LineHeight::Multiple(1.5)),
                     ),
             ),
     )
+}
+
+fn seconds_field(
+    label: &'static str,
+    initial: f64,
+    hint: &'static str,
+    set: impl Fn(f64) + 'static,
+) -> AnyElement {
+    let draft = signal(format!("{:.0}", initial.max(0.0)));
+    let set = std::rc::Rc::new(set);
+    let commit = {
+        let set = set.clone();
+        std::rc::Rc::new(move || {
+            let value = draft
+                .get()
+                .trim()
+                .parse::<f64>()
+                .unwrap_or(0.0)
+                .clamp(0.0, 3600.0);
+            set(value);
+            draft.set(format!("{value:.0}"));
+        })
+    };
+    view()
+        .flex_1()
+        .min_w(px(180.0))
+        .gap(px(5.0))
+        .child(field_label(label))
+        .child(
+            input()
+                .value(move || draft.get())
+                .placeholder("0")
+                .placeholder_color(FAINT)
+                .text_color(TEXT)
+                .text_size(px(13.0))
+                .h(px(36.0))
+                .px(px(10.0))
+                .rounded(px(8.0))
+                .bg(RAISED)
+                .border_1()
+                .border_color(BORDER)
+                .focus(|s| s.border_color(alpha(0xe9b872, 0.65)))
+                .auto_correct(false)
+                .on_change(move |next: &str| draft.set(next.to_string()))
+                .on_submit({
+                    let commit = commit.clone();
+                    move |_: &str| commit()
+                })
+                .on_blur({
+                    let commit = commit.clone();
+                    move |_: &()| commit()
+                }),
+        )
+        .child(
+            text(hint)
+                .text_size(px(10.0))
+                .text_color(FAINT)
+                .line_height(nsh_core::LineHeight::Multiple(1.4)),
+        )
+        .into_element()
 }
 
 fn data_section() -> AnyElement {

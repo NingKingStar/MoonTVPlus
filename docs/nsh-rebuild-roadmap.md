@@ -108,6 +108,17 @@ P0 之后只做了 P1 的第一步，范围是搜索增量/建议历史/豆瓣�
 |隔离实例契约|70/70 通过（新增 C08b 多源独立、R01 源记忆/备用源纯函数）|`apps/desktop-nsh/docs/p1d-contract-2026-11-27.md`、`.json`|
 |未验证|真实媒体断流后的自动换源手感、真实第三方源、Linux/多屏/DPI|坏媒体回退已由隔离实例日志确认；失败提示条未留截图，真实媒体仍需人工验收|
 
+## 2026-11-27 P1 第四批（播放页日常操作：倍速 / 跳片头片尾 / 偏好）
+
+|项目|状态|证据|
+|---|---|---|
+|版本与包|moontv-native 0.7.0；便携包 `moontv-native-0.7.0-windows-x64-portable.zip` + SHA256（README/BUILD/media/exe 均在包内）|`apps/desktop-nsh/dist/`（不入库）|
+|倍速|控制条常驻 0.5/0.75/1/1.25/1.5/2 六档，原生 `.rate(...)`；`[` / `]` 逐档；写入本机 Settings|`src/model.rs`、`src/ui/player.rs`、`src/state.rs`、截图 36|
+|跳片头/片尾|设置可填片头/片尾秒数（0 关闭）；片头窗口显示「跳过片头」，自动开关开启时直接 seek；临近片尾显示「下一集」|`src/ui/pages.rs`、`src/ui/player.rs`、`src/model.rs`、截图 37|
+|偏好持久化|音量沿用原字段；倍速、片头/片尾秒数、自动跳过开关写入 `moontv.nsh.settings.v1`，旧设置缺字段回默认 1×/0/关|`src/model.rs`、单测|
+|构建门禁|fmt / clippy `-D warnings` / 49 单测 + 2 集成测试 / release 构建全绿|本地实测|
+|未验证|真实媒体倍速的音高/音画同步、真实片头片尾窗口手感、Linux/多屏/DPI；未改服务端接口，所以未新增隔离契约|截图是演示模式，已在截图 README 标注|
+
 ## README、现有实现与缺失功能的界线
 
 |候选或宣称|实际核对|重构处理|

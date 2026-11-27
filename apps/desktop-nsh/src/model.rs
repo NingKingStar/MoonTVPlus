@@ -499,6 +499,19 @@ pub struct Settings {
     pub demo_active: bool,
     pub auto_next: bool,
     pub volume: f32,
+    /// Playback speed, one of `PLAYBACK_RATES`; stored per user.
+    #[serde(default = "default_playback_rate")]
+    pub playback_rate: f32,
+    /// Seconds to skip at the start of every episode; 0 disables the window.
+    #[serde(default)]
+    pub intro_seconds: f64,
+    /// Seconds before the end where the next-episode shortcut appears; 0
+    /// disables it.
+    #[serde(default)]
+    pub outro_seconds: f64,
+    /// Seek past the intro automatically when inside the intro window.
+    #[serde(default)]
+    pub auto_skip_intro: bool,
     pub last_username: String,
     pub show_spoilers: bool,
     /// Remembered discovery filters, keyed by `kind.slot` (`movie.primary`,
@@ -514,6 +527,10 @@ impl Default for Settings {
             demo_active: false,
             auto_next: true,
             volume: 0.8,
+            playback_rate: 1.0,
+            intro_seconds: 0.0,
+            outro_seconds: 0.0,
+            auto_skip_intro: false,
             last_username: String::new(),
             show_spoilers: false,
             discover: std::collections::BTreeMap::new(),
@@ -524,6 +541,10 @@ impl Default for Settings {
 // Namespaced so a stray MoonTVPlus NSH build sharing the host's data folder
 // can never be read as this product's settings or library.
 const SETTINGS_KEY: &str = "moontv.nsh.settings.v1";
+
+fn default_playback_rate() -> f32 {
+    1.0
+}
 
 /// Instance the client offers on first launch. Override at build time with
 /// `MOONTV_DEFAULT_INSTANCE`; users can still type a self-hosted address.
@@ -629,6 +650,70 @@ pub fn format_time(seconds: f64) -> String {
     } else {
         format!("{m:02}:{s:02}")
     }
+}
+
+/// The playback speeds offered by the player. Keep this list small and
+/// ordered; the UI and the `[` / `]` keyboard steps share it.
+pub const PLAYBACK_RATES: [f32; 6] = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+
+/// A persisted rate may come from an older or hand-edited settings file.
+/// Only the six supported rates are accepted; anything else means 1x.
+pub fn normalize_rate(rate: f32) -> f32 {
+    PLAYBACK_RATES
+        .iter()
+        .copied()
+        .find(|candidate| (*candidate - rate).abs() < 0.001)
+        .unwrap_or(1.0)
+}
+
+pub fn step_rate(rate: f32, delta: i32) -> f32 {
+    let current = normalize_rate(rate);
+    let index = PLAYBACK_RATES
+        .iter()
+        .position(|candidate| (*candidate - current).abs() < 0.001)
+        .unwrap_or(2) as i32;
+    let next = (index + delta).clamp(0, PLAYBACK_RATES.len() as i32 - 1);
+    PLAYBACK_RATES[next as usize]
+}
+
+pub fn format_rate(rate: f32) -> String {
+    let value = format!("{:.2}", normalize_rate(rate));
+    let value = value.trim_end_matches('0').trim_end_matches('.');
+    format!("{value}×")
+}
+
+/// Where the intro skip should land, if the window is meaningful. A zero,
+/// unknown, or overlong intro must not seek to the end or past it.
+pub fn intro_skip_target(duration: f64, intro_seconds: f64) -> Option<f64> {
+    if !duration.is_finite()
+        || !intro_seconds.is_finite()
+        || duration <= 0.0
+        || intro_seconds <= 0.0
+        || intro_seconds >= duration - 0.25
+    {
+        return None;
+    }
+    Some(intro_seconds)
+}
+
+pub fn in_intro_window(position: f64, duration: f64, intro_seconds: f64) -> bool {
+    intro_skip_target(duration, intro_seconds)
+        .is_some_and(|target| position >= 0.0 && position < target)
+}
+
+/// True only inside a finite outro window that does not cover the whole
+/// episode. At exactly the end the end screen owns the UI.
+pub fn in_outro_window(position: f64, duration: f64, outro_seconds: f64) -> bool {
+    if !position.is_finite()
+        || !duration.is_finite()
+        || !outro_seconds.is_finite()
+        || duration <= 0.0
+        || outro_seconds <= 0.0
+        || outro_seconds >= duration
+    {
+        return false;
+    }
+    position >= duration - outro_seconds && position < duration
 }
 
 pub fn percent_label(percent: f32) -> String {
@@ -908,6 +993,58 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    #[test]
+    fn playback_rates_step_and_stay_in_range() {
+        assert_eq!(PLAYBACK_RATES, [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]);
+        assert_eq!(step_rate(0.5, -1), 0.5);
+        assert_eq!(step_rate(0.5, 1), 0.75);
+        assert_eq!(step_rate(1.0, 1), 1.25);
+        assert_eq!(step_rate(2.0, 1), 2.0);
+        assert_eq!(normalize_rate(1.3), 1.0);
+        assert_eq!(normalize_rate(f32::NAN), 1.0);
+        assert_eq!(format_rate(0.5), "0.5×");
+        assert_eq!(format_rate(1.0), "1×");
+    }
+
+    #[test]
+    fn intro_and_outro_windows_have_safe_boundaries() {
+        assert_eq!(intro_skip_target(30.0, 10.0), Some(10.0));
+        assert_eq!(intro_skip_target(30.0, 0.0), None);
+        assert_eq!(intro_skip_target(30.0, 30.0), None);
+        assert_eq!(intro_skip_target(0.0, 10.0), None);
+        assert!(in_intro_window(0.0, 30.0, 10.0));
+        assert!(in_intro_window(9.99, 30.0, 10.0));
+        assert!(!in_intro_window(10.0, 30.0, 10.0));
+        assert!(!in_intro_window(1.0, 30.0, 0.0));
+
+        assert!(in_outro_window(20.0, 30.0, 10.0));
+        assert!(in_outro_window(29.99, 30.0, 10.0));
+        assert!(!in_outro_window(19.99, 30.0, 10.0));
+        assert!(!in_outro_window(30.0, 30.0, 10.0));
+        assert!(!in_outro_window(0.0, 30.0, 30.0));
+        assert!(!in_outro_window(0.0, 0.0, 10.0));
+    }
+
+    #[test]
+    fn settings_defaults_leave_daily_playback_unchanged() {
+        let settings = Settings::default();
+        assert_eq!(settings.playback_rate, 1.0);
+        assert_eq!(settings.intro_seconds, 0.0);
+        assert_eq!(settings.outro_seconds, 0.0);
+        assert!(!settings.auto_skip_intro);
+    }
+
+    #[test]
+    fn old_settings_json_keeps_new_playback_defaults() {
+        let old = r#"{"instance":"http://127.0.0.1:1/","demo_active":false,"auto_next":true,"volume":0.4,"last_username":"u","show_spoilers":false,"discover":{}}"#;
+        let settings: Settings = serde_json::from_str(old).expect("old settings");
+        assert_eq!(settings.volume, 0.4);
+        assert_eq!(settings.playback_rate, 1.0);
+        assert_eq!(settings.intro_seconds, 0.0);
+        assert_eq!(settings.outro_seconds, 0.0);
+        assert!(!settings.auto_skip_intro);
     }
 
     #[test]

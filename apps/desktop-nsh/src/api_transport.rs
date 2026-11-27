@@ -7,7 +7,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-pub const USER_AGENT: &str = "MoonTVPlus App/0.6 NSH (Windows)";
+pub const USER_AGENT: &str = "MoonTVPlus App/0.7 NSH (Windows)";
 pub const ACCESS_AGE_MS: u64 = 4 * 60 * 60 * 1000;
 pub const REFRESH_AGE_MS: u64 = 60 * 24 * 60 * 60 * 1000;
 pub const RENEWAL_THRESHOLD_MS: u64 = 10 * 60 * 1000;

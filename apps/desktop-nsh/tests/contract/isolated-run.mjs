@@ -145,7 +145,7 @@ function client(base) {
     const url = new URL(pathname, base).toString();
     const headers = { ...(options.headers || {}) };
     if (options.token) headers.authorization = `Bearer ${options.token}`;
-    if (!headers['user-agent']) headers['user-agent'] = 'MoonTVPlus App/0.6 NSH (Windows)';
+    if (!headers['user-agent']) headers['user-agent'] = 'MoonTVPlus App/0.7 NSH (Windows)';
     let body;
     if (options.json !== undefined) {
       headers['content-type'] = 'application/json';
@@ -561,7 +561,7 @@ async function runChecks({ call, base }) {
 
   const uaApp = await call('GET', 'api/source-detail?source=fixture-a&id=1001', {
     token,
-    headers: { 'user-agent': 'MoonTVPlus App/0.6 NSH (Windows)' },
+    headers: { 'user-agent': 'MoonTVPlus App/0.7 NSH (Windows)' },
   });
   const proxied = (uaApp.json?.episodes || []).every((url) => String(url).includes('/api/proxy-m3u8?url='));
   record(
@@ -615,7 +615,7 @@ async function runChecks({ call, base }) {
   // ---- SSE -------------------------------------------------------------
   const sse = await readSse(`${base}api/search/ws?q=%E5%9B%9E%E5%A3%B0`, {
     authorization: `Bearer ${token}`,
-    'user-agent': 'MoonTVPlus App/0.6 NSH (Windows)',
+    'user-agent': 'MoonTVPlus App/0.7 NSH (Windows)',
     accept: 'text/event-stream',
   });
   const types = sse.events.map((event) => event.type);
