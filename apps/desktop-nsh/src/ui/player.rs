@@ -592,6 +592,19 @@ fn maybe_auto_skip_intro(video: ElementRef, progress: &VideoProgress) {
     };
     let position = progress.current_time as f64;
     let Some(target) = intro_skip_target(duration, settings.intro_seconds) else {
+        // A configured window longer than the episode can never apply; say so
+        // once instead of silently doing nothing.
+        if settings.intro_seconds > 0.0 && duration > 0.0 && !p.intro_skipped {
+            state::mark_intro_skipped();
+            state::toast("片头秒数超过本集片长，本次未跳过", state::ToastTone::Info);
+            crate::logbook::event(
+                "player_skip_intro_ignored",
+                serde_json::json!({
+                    "intro": settings.intro_seconds,
+                    "duration": duration,
+                }),
+            );
+        }
         return;
     };
     if !p.resume_done && p.resume_at > target {
@@ -831,7 +844,7 @@ fn skip_prompt(video: ElementRef) -> AnyElement {
             if p.phase != PlayPhase::Ready {
                 return view().into_element();
             }
-            if !settings.auto_skip_intro
+            if !p.intro_skipped
                 && in_intro_window(p.position, p.duration, settings.intro_seconds)
                 && let Some(target) = intro_skip_target(p.duration, settings.intro_seconds)
             {

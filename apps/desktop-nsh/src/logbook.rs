@@ -7,6 +7,23 @@ use serde_json::Value;
 
 static LOCK: Mutex<()> = Mutex::new(());
 
+/// Where the product log lives when `MOONTV_LOG` is not set: the same app
+/// data directory as the settings, so it survives restarts regardless of the
+/// working directory the launcher picks.
+fn default_log_path() -> std::path::PathBuf {
+    let dir = std::env::var("MOONTV_DATA_DIR")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .map(std::path::PathBuf::from)
+        .or_else(|| {
+            std::env::var("APPDATA")
+                .ok()
+                .map(|base| std::path::Path::new(&base).join("MoonTVPlus").join("nsh"))
+        })
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+    dir.join("product.jsonl")
+}
+
 pub fn event(kind: &str, value: Value) {
     let row = serde_json::json!({
         "ms": nsh_core::time::unix_ms(),
@@ -14,7 +31,12 @@ pub fn event(kind: &str, value: Value) {
         "value": value,
     });
     log::info!("{row}");
-    let path = std::env::var("MOONTV_LOG").unwrap_or_else(|_| ".runtime/product.jsonl".to_owned());
+    let path = std::env::var("MOONTV_LOG")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| default_log_path());
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
     let _guard = LOCK.lock();
     if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
         let _ = writeln!(file, "{row}");

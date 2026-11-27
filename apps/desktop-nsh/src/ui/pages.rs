@@ -3641,7 +3641,7 @@ fn playback_section() -> AnyElement {
                     .child(seconds_field(
                         "片头秒数",
                         stored.get().intro_seconds,
-                        "0 = 关闭；片头区间内显示「跳过片头」",
+                        "0 = 关闭；超过片长时忽略，片头区间内显示「跳过片头」",
                         move |value| state::update_settings(|settings| settings.intro_seconds = value),
                     ))
                     .child(seconds_field(
