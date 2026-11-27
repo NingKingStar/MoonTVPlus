@@ -121,8 +121,20 @@ pub fn merge_candidates(existing: &mut Vec<Candidate>, incoming: Vec<Candidate>)
     added
 }
 
+/// Grouping key: case and punctuation insensitive so "庆余年 第一季" and
+/// "庆余年第一季" stay one work, while season and audio markers are kept so
+/// different seasons and Cantonese/Mandarin cuts do not collapse together.
+fn group_key(raw: &str) -> String {
+    let lower = raw.to_lowercase();
+    let mut out: String = lower.chars().filter(|c| c.is_alphanumeric()).collect();
+    for token in ["4k", "1080p", "2160p", "高清", "蓝光", "完整版"] {
+        out = out.replace(token, "");
+    }
+    out
+}
+
 /// Groups results for display. Identity is still each candidate; grouping
-/// needs an exact (case-insensitive) title and an equal year.
+/// needs an equal normalised title and an equal year.
 pub fn group_results(results: Vec<Candidate>) -> Vec<Work> {
     let mut seen = HashMap::new();
     let mut groups: Vec<(String, String, Vec<Candidate>)> = Vec::new();
@@ -132,7 +144,7 @@ pub fn group_results(results: Vec<Candidate>) -> Vec<Work> {
             continue;
         }
         seen.insert(key, true);
-        let title_key = candidate.title.trim().to_lowercase();
+        let title_key = group_key(&candidate.title);
         let year_key = candidate.year.trim();
         if let Some((_, _, list)) = groups
             .iter_mut()
@@ -150,6 +162,105 @@ pub fn group_results(results: Vec<Candidate>) -> Vec<Work> {
     works.sort_by(|a, b| {
         b.weight
             .cmp(&a.weight)
+            .then_with(|| b.year.cmp(&a.year))
+            .then_with(|| a.title.cmp(&b.title))
+    });
+    works
+}
+
+/// Case/punctuation-insensitive form used for relevance, with common
+/// release-tag noise removed so "庆余年 第二季 4K" still matches "庆余年".
+fn search_key(raw: &str) -> String {
+    let lower = raw.to_lowercase();
+    let mut out: String = lower.chars().filter(|c| c.is_alphanumeric()).collect();
+    for token in [
+        "第二季",
+        "第三季",
+        "第四季",
+        "第一季",
+        "第2季",
+        "第3季",
+        "第4季",
+        "第1季",
+        "season2",
+        "season3",
+        "season4",
+        "season1",
+        "4k",
+        "1080p",
+        "2160p",
+        "国语",
+        "粤语",
+        "中字",
+        "无删减",
+        "未删减",
+        "完整版",
+        "合集",
+    ] {
+        out = out.replace(token, "");
+    }
+    out
+}
+
+fn relevance(title: &str, query: &str) -> i32 {
+    let q = search_key(query);
+    if q.is_empty() {
+        return 0;
+    }
+    let raw_title = title.trim().to_lowercase();
+    let raw_query = query.trim().to_lowercase();
+    if raw_title == raw_query {
+        // The plain title beats anything carrying release tags.
+        return 200;
+    }
+    let t = search_key(title);
+    if t == q {
+        120
+    } else if t.starts_with(&q) {
+        90
+    } else if t.contains(&q) {
+        60
+    } else {
+        0
+    }
+}
+
+fn looks_like_noise(title: &str) -> bool {
+    let t = title.to_lowercase();
+    [
+        "预告",
+        "花絮",
+        "解说",
+        "速看",
+        "混剪",
+        "片段",
+        "合集",
+        "reaction",
+        "拍摄花絮",
+    ]
+    .iter()
+    .any(|marker| t.contains(marker))
+}
+
+/// Orders grouped works for a query: the closest title first, then the one
+/// carried by more sources, then the newer year. Trailers and clips are
+/// pushed down rather than dropped.
+pub fn rank_works(mut works: Vec<Work>, query: &str) -> Vec<Work> {
+    works.sort_by(|a, b| {
+        let score = |w: &Work| {
+            let mut value =
+                relevance(&w.title, query) * 100 + (w.candidates.len().min(20) as i32) * 5;
+            if let Ok(year) = w.year.trim().parse::<i32>() {
+                value += (year - 1900).clamp(0, 200);
+            }
+            if looks_like_noise(&w.title) {
+                value -= 5000;
+            }
+            value
+        };
+        score(b)
+            .cmp(&score(a))
+            .then_with(|| b.weight.cmp(&a.weight))
             .then_with(|| b.year.cmp(&a.year))
             .then_with(|| a.title.cmp(&b.title))
     });
@@ -606,6 +717,32 @@ mod tests {
             source_name: source.into(),
             ..Candidate::default()
         }
+    }
+
+    #[test]
+    fn ranks_the_exact_title_first_and_sinks_trailers() {
+        let works = group_results(vec![
+            candidate("庆余年 第二季 4K", "2024", "a", "1"),
+            candidate("庆余年", "2019", "b", "2"),
+            candidate("庆余年预告片", "2019", "c", "3"),
+            candidate("庆余年 合集", "2022", "d", "4"),
+        ]);
+        let ranked = rank_works(works, "庆余年");
+        assert_eq!(ranked[0].title, "庆余年");
+        assert_eq!(ranked.last().unwrap().title, "庆余年预告片");
+    }
+
+    #[test]
+    fn more_sources_break_a_title_tie() {
+        let works = group_results(vec![
+            candidate("庆余年", "2019", "a", "1"),
+            candidate("庆余年", "2019", "b", "2"),
+            candidate("庆余年", "2019", "c", "3"),
+            candidate("庆余年", "2024", "d", "4"),
+        ]);
+        let ranked = rank_works(works, "庆余年");
+        assert_eq!(ranked[0].year, "2019");
+        assert_eq!(ranked[0].candidates.len(), 3);
     }
 
     #[test]

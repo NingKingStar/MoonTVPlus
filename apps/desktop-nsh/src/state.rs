@@ -1323,7 +1323,10 @@ fn spawn_stream(
                     let mut state = search_state().get();
                     let count = results.len();
                     ingest(&mut state, results);
-                    state.works = crate::model::group_results(state.results.clone());
+                    state.works = crate::model::rank_works(
+                        crate::model::group_results(state.results.clone()),
+                        &state.query,
+                    );
                     note_source(&mut state, source, source_name, count, None);
                     search_state().set(state);
                 }
@@ -1342,7 +1345,10 @@ fn spawn_stream(
                 } => {
                     let mut state = search_state().get();
                     state.completed_sources = state.completed_sources.max(completed_sources);
-                    state.works = crate::model::group_results(state.results.clone());
+                    state.works = crate::model::rank_works(
+                        crate::model::group_results(state.results.clone()),
+                        &state.query,
+                    );
                     state.phase = LoadPhase::Ready;
                     state.partial = false;
                     state.notice.clear();
@@ -1408,7 +1414,10 @@ fn spawn_fallback(
 
 fn absorb_fallback(state: &mut SearchState, candidates: Vec<Candidate>, reason: &str) -> usize {
     let added = crate::model::merge_candidates(&mut state.results, candidates);
-    state.works = crate::model::group_results(state.results.clone());
+    state.works = crate::model::rank_works(
+        crate::model::group_results(state.results.clone()),
+        &state.query,
+    );
     state.phase = LoadPhase::Ready;
     state.partial = false;
     state.notice = if state.results.is_empty() {
@@ -1420,7 +1429,10 @@ fn absorb_fallback(state: &mut SearchState, candidates: Vec<Candidate>, reason: 
 }
 
 fn keep_partial_after_failure(state: &mut SearchState, reason: &str, error: &str) {
-    state.works = crate::model::group_results(state.results.clone());
+    state.works = crate::model::rank_works(
+        crate::model::group_results(state.results.clone()),
+        &state.query,
+    );
     state.phase = LoadPhase::Ready;
     state.partial = true;
     state.notice = format!("{reason}；普通搜索也失败（{error}），仅显示已到达的结果");
