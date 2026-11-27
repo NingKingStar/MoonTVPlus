@@ -46,16 +46,18 @@ jobs:
         run: echo "version=v$(tr -d '[:space:]' < VERSION.txt)" >> "$GITHUB_OUTPUT"
 
       # 新增步骤：根据分支动态设置镜像名称
+      # GHCR 要求仓库所有者全小写，所以统一先转小写再拼镜像名
       - name: Set image name based on branch
         id: set_image_name
         run: |
+          OWNER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')
           if [[ "${{ github.ref_name }}" == "main" ]]; then
-            echo "IMAGE_NAME=ghcr.io/${{ github.repository_owner }}/moontvplus" >> $GITHUB_ENV
+            echo "IMAGE_NAME=ghcr.io/${OWNER}/moontvplus" >> $GITHUB_ENV
           elif [[ "${{ github.ref_name }}" == "dev" ]]; then
-            echo "IMAGE_NAME=ghcr.io/${{ github.repository_owner }}/moontvplus-dev2" >> $GITHUB_ENV
+            echo "IMAGE_NAME=ghcr.io/${OWNER}/moontvplus-dev2" >> $GITHUB_ENV
           else
             # 为其他分支或手动触发设置一个默认值（可以根据需要调整）
-            echo "IMAGE_NAME=ghcr.io/${{ github.repository_owner }}/moontvplus-dev2" >> $GITHUB_ENV
+            echo "IMAGE_NAME=ghcr.io/${OWNER}/moontvplus-dev2" >> $GITHUB_ENV
           fi
 
       - name: Set up Docker Buildx
@@ -137,12 +139,13 @@ jobs:
       - name: Set image name based on branch
         id: set_image_name
         run: |
+          OWNER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')
           if [[ "${{ github.ref_name }}" == "main" ]]; then
-            echo "IMAGE_NAME=ghcr.io/${{ github.repository_owner }}/moontvplus" >> $GITHUB_ENV
+            echo "IMAGE_NAME=ghcr.io/${OWNER}/moontvplus" >> $GITHUB_ENV
           elif [[ "${{ github.ref_name }}" == "dev" ]]; then
-            echo "IMAGE_NAME=ghcr.io/${{ github.repository_owner }}/moontvplus-dev2" >> $GITHUB_ENV
+            echo "IMAGE_NAME=ghcr.io/${OWNER}/moontvplus-dev2" >> $GITHUB_ENV
           else
-            echo "IMAGE_NAME=ghcr.io/${{ github.repository_owner }}/moontvplus-dev2" >> $GITHUB_ENV
+            echo "IMAGE_NAME=ghcr.io/${OWNER}/moontvplus-dev2" >> $GITHUB_ENV
           fi
 
       # 新增步骤：在 merge 任务中也需要生成同样的标签列表

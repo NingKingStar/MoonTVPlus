@@ -12,7 +12,7 @@
   ],
   "crons": [
     {
-      "path": "/api/cron/mtvpls",
+      "path": "/api/cron/CHANGE_ME_CRON_PASSWORD",
       "schedule": "0 1 * * *"
     }
   ]

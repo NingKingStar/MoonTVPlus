@@ -23,6 +23,11 @@ function generateManifest() {
 
 generateManifest();
 
+// 内置定时任务的口令：不再提供任何默认值。
+// 未设置 CRON_PASSWORD 时，本进程的每小时定时任务直接停用（/api/cron/<password>
+// 在未配置时同样会拒绝请求），避免用可猜测的固定口令暴露定时任务接口。
+const cronPassword = (process.env.CRON_PASSWORD || '').trim();
+
 // 直接在当前进程中启动 standalone Server（`server.js`）
 require('./server.js');
 
@@ -38,6 +43,14 @@ const intervalId = setInterval(() => {
     if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
       console.log('Server is up, stop polling.');
       clearInterval(intervalId);
+
+      if (!cronPassword) {
+        console.warn('[cron] CRON_PASSWORD 未设置：内置每小时定时任务已停用。');
+        console.warn(
+          '[cron] /api/cron 在未配置口令时同样拒绝请求；设置 CRON_PASSWORD 后重启即可恢复。'
+        );
+        return;
+      }
 
       setTimeout(() => {
         // 服务器启动后，立即执行一次 cron 任务
@@ -58,11 +71,14 @@ const intervalId = setInterval(() => {
 
 // 执行 cron 任务的函数
 function executeCronJob() {
-  const cronPassword = process.env.CRON_PASSWORD || 'mtvpls';
+  // 未配置口令时不做任何定时请求（启动时已打印停用提示）
+  if (!cronPassword) return;
+
   const cronUrl = `http://${process.env.HOSTNAME || 'localhost'}:${process.env.PORT || 3000
     }/api/cron/${cronPassword}`;
 
-  console.log(`Executing cron job: ${cronUrl}`);
+  // 不要把口令打进日志
+  console.log('Executing internal cron job ...');
 
   const req = http.get(cronUrl, (res) => {
     let data = '';

@@ -7,7 +7,12 @@ import { AdminConfig } from './admin.types';
 import { fetchConfigSubscription } from './config-subscription';
 import { setServerTmdbImageBaseUrl } from './tmdb-image-base';
 
-const BUILTIN_DANMAKU_API_BASE = 'https://mtvpls-danmu.netlify.app/87654321';
+// 内置弹幕源（可选）：由部署方通过环境变量指定自己的 danmu_api，
+// 不再内置任何第三方个人部署；未配置时相关分支回退到自定义地址。
+const BUILTIN_DANMAKU_API_BASE =
+  process.env.BUILTIN_DANMAKU_API_BASE?.trim() || '';
+const BUILTIN_DANMAKU_API_TOKEN =
+  process.env.BUILTIN_DANMAKU_API_TOKEN?.trim() || '';
 const DEFAULT_LIVE_REFRESH_INTERVAL_HOURS = 12;
 const DEFAULT_TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org';
 
@@ -312,13 +317,15 @@ async function getInitConfig(
         process.env.NEXT_PUBLIC_DISABLE_YELLOW_FILTER === 'true',
       FluidSearch: process.env.NEXT_PUBLIC_FLUID_SEARCH !== 'false',
       // 弹幕配置
-      DanmakuSourceType: hasCustomDanmakuEnv ? 'custom' : 'builtin',
+      DanmakuSourceType:
+        hasCustomDanmakuEnv || !BUILTIN_DANMAKU_API_BASE ? 'custom' : 'builtin',
       DanmakuApiBase:
         process.env.DANMAKU_API_BASE ||
-        (hasCustomDanmakuEnv
+        (hasCustomDanmakuEnv || !BUILTIN_DANMAKU_API_BASE
           ? 'http://localhost:9321'
           : BUILTIN_DANMAKU_API_BASE),
-      DanmakuApiToken: process.env.DANMAKU_API_TOKEN || '87654321',
+      DanmakuApiToken:
+        process.env.DANMAKU_API_TOKEN || BUILTIN_DANMAKU_API_TOKEN,
       DanmakuAutoLoadDefault: true,
       // TMDB配置
       TMDBApiKey: process.env.TMDB_API_KEY || '',
@@ -551,9 +558,9 @@ export function configSelfCheck(adminConfig: AdminConfig): AdminConfig {
       DoubanImageProxy: '',
       DisableYellowFilter: false,
       FluidSearch: true,
-      DanmakuSourceType: 'builtin',
-      DanmakuApiBase: BUILTIN_DANMAKU_API_BASE,
-      DanmakuApiToken: '87654321',
+      DanmakuSourceType: BUILTIN_DANMAKU_API_BASE ? 'builtin' : 'custom',
+      DanmakuApiBase: BUILTIN_DANMAKU_API_BASE || 'http://localhost:9321',
+      DanmakuApiToken: BUILTIN_DANMAKU_API_TOKEN,
       DanmakuAutoLoadDefault: true,
       TMDBImageBaseUrl: DEFAULT_TMDB_IMAGE_BASE_URL,
       EnableComments: false,
@@ -573,12 +580,13 @@ export function configSelfCheck(adminConfig: AdminConfig): AdminConfig {
   }
   if (!adminConfig.SiteConfig.DanmakuApiBase) {
     adminConfig.SiteConfig.DanmakuApiBase =
-      adminConfig.SiteConfig.DanmakuSourceType === 'builtin'
+      adminConfig.SiteConfig.DanmakuSourceType === 'builtin' &&
+      BUILTIN_DANMAKU_API_BASE
         ? BUILTIN_DANMAKU_API_BASE
         : 'http://localhost:9321';
   }
   if (!adminConfig.SiteConfig.DanmakuApiToken) {
-    adminConfig.SiteConfig.DanmakuApiToken = '87654321';
+    adminConfig.SiteConfig.DanmakuApiToken = BUILTIN_DANMAKU_API_TOKEN;
   }
   if (adminConfig.SiteConfig.DanmakuAutoLoadDefault === undefined) {
     adminConfig.SiteConfig.DanmakuAutoLoadDefault = true;

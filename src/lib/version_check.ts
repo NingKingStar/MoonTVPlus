@@ -14,9 +14,9 @@ export enum UpdateStatus {
 // 远程版本检查URL配置
 // 本项目已独立开发，版本只和本仓库的 VERSION.txt 比较，不再跟随上游
 const VERSION_CHECK_URLS = [
-  'https://raw.githubusercontent.com/Happier-X/MoonTVPlus/main/VERSION.txt',
+  'https://raw.githubusercontent.com/NingKingStar/MoonTVPlus/main/VERSION.txt',
   // 备用地址：raw.githubusercontent 被墙或限流时使用
-  'https://cdn.jsdelivr.net/gh/Happier-X/MoonTVPlus@main/VERSION.txt',
+  'https://cdn.jsdelivr.net/gh/NingKingStar/MoonTVPlus@main/VERSION.txt',
 ];
 
 /**

@@ -4,7 +4,7 @@ services:
     runtime: image
     plan: free
     image:
-      url: ghcr.io/mtvpls/moontvplus:latest
+      url: ghcr.io/ningkingstar/moontvplus:latest
     envVars:
       - key: USERNAME
         sync: false
@@ -13,4 +13,6 @@ services:
       - key: NEXT_PUBLIC_SITE_NAME
         value: MoonTVPlus
       - key: CRON_PASSWORD
-        value: mtvpls
+        # 不再写死默认口令：让 Render 生成一个随机值。
+        # 想自己指定就改成 sync: false，部署时在控制台填写。
+        generateValue: true

@@ -44,7 +44,9 @@ async function serveLatestApk(request: Request, env: Env, url: URL): Promise<Res
   headers.set('User-Agent', 'MoonTVPlus-Android-Updater');
 
   const assetUrl =
-    'https://github.com/Happier-X/MoonTVPlus/releases/download/client-v' + manifest.version +
+    // 更新包来源：本仓库自己发布的 client-v* Release（与 cloudflare-deploy.yml 生成 latest.json 的口径一致）。
+    // 仓库改名/转移时只需改这一处。
+    'https://github.com/NingKingStar/MoonTVPlus/releases/download/client-v' + manifest.version +
     '/moontvplus-phone-' + manifest.version + '-release-signed.apk';
   const upstream = await fetch(assetUrl, { method: request.method, headers, redirect: 'follow' });
   const responseHeaders = new Headers(upstream.headers);
@@ -77,7 +79,15 @@ export default {
   // wrangler.toml 里 CRON_WAIT_FOR_COMPLETION="true"，路由会等任务跑完再返回，
   // 所以这里 await（不要用 ctx.waitUntil —— 那是"先返回后台继续"的语义）。
   async scheduled(_event: unknown, env: Env, ctx: ExecutionContext): Promise<void> {
-    const password = env.CRON_PASSWORD || 'mtvpls';
+    // 不再使用任何内置默认口令：未配置 CRON_PASSWORD 时无法通过 /api/cron 的校验，
+    // 发了也是 401，所以直接跳过并打印一次告警。
+    const password = (env.CRON_PASSWORD || '').trim();
+    if (!password) {
+      console.warn(
+        '[cron] CRON_PASSWORD is not set; skipping the scheduled task (set it as a Worker secret to enable it).'
+      );
+      return;
+    }
     const url = new URL(`/api/cron/${password}`, 'https://internal.invalid');
     await openNextWorker.fetch(new Request(url), env, ctx);
   },

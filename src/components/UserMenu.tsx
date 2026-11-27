@@ -5876,7 +5876,7 @@ export const UserMenu: React.FC = () => {
                       MoonTVPlus-PC客户端
                     </h4>
                     <p className='text-sm text-gray-600 dark:text-gray-400 mb-3'>
-                      专为 Windows 开发的客户端，优化 MKV 视频与内嵌字幕播放
+                      专为 Windows 开发的客户端，优化 MKV 视频与内嵌字幕播放（上游第三方构建，非本仓库发布）
                     </p>
                     <a
                       href='https://github.com/mtvpls/MoonTVPlus-PC/releases'
@@ -5910,7 +5910,7 @@ export const UserMenu: React.FC = () => {
                       Selene 跨平台客户端
                     </h4>
                     <p className='text-sm text-gray-600 dark:text-gray-400 mb-3'>
-                      多平台客户端
+                      多平台客户端（上游第三方构建，非本仓库发布）
                     </p>
                     <div className='flex flex-wrap gap-2'>
                       <a
@@ -5946,7 +5946,7 @@ export const UserMenu: React.FC = () => {
                       OrionTV TV专用客户端
                     </h4>
                     <p className='text-sm text-gray-600 dark:text-gray-400 mb-3'>
-                      tv专用
+                      tv专用（上游第三方构建，非本仓库发布）
                     </p>
                     <a
                       href='https://github.com/mtvpls/OrionTV_Build/tags'
@@ -5978,8 +5978,7 @@ export const UserMenu: React.FC = () => {
                       MoonTVPlus 插件
                     </h4>
                     <p className='text-sm text-gray-600 dark:text-gray-400 mb-3'>
-                      为 MoonTVPlus
-                      为直链播放提供跨域媒体支持，便于 Anime4K 等画面增强能力
+                      为 MoonTVPlus 直链播放提供跨域媒体支持，便于 Anime4K 等画面增强能力（上游第三方构建，非本仓库发布）
                     </p>
                     <a
                       href='https://github.com/mtvpls/moontvplus-extension/releases'

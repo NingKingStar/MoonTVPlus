@@ -72,6 +72,7 @@
 - [TVBOX 订阅功能](#tvbox-订阅功能)
 - [安全与隐私提醒](#安全与隐私提醒)
 - [License](#license)
+- [上游与许可](#上游与许可)
 - [致谢](#致谢)
 
 
@@ -91,9 +92,9 @@
 
 本项目**支持 Docker、Vercel、Netlify、Cloudflare Workers 和 EdgeOne Pages 平台** 部署。
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/mtvpls/MoonTVPlus)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/NingKingStar/MoonTVPlus)
 
-[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/mtvpls/MoonTVPlus)
+[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/NingKingStar/MoonTVPlus)
 
 **一键部署到 Zeabur**
 
@@ -101,7 +102,7 @@
 
 **一键部署到 Render**
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/mtvpls/MoonTVPlus)
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/NingKingStar/MoonTVPlus)
 
 
 
@@ -271,12 +272,17 @@ EdgeOne Pages/Makers 支持通过 API Token 在 GitHub Actions 中自动构建�
 
 ### Docker 部署
 
+> **镜像来源**：镜像由本仓库的 GitHub Actions 构建后推送到 GHCR。
+> 首次部署前请先在 Actions 页面手动运行一次 **Build & Push Docker image**（用 Lite 镜像则再运行一次 **Build & Push Docker lite image**），
+> 否则 `ghcr.io/ningkingstar/moontvplus` 还没有任何标签，`docker pull` 会得到 404。
+> 也可以直接用 `docker build -f Dockerfile -t moontvplus .` 本地构建。
+
 #### Kvrocks 存储（推荐）
 
 ```yml
 services:
   moontv-core:
-    image: ghcr.io/mtvpls/moontvplus:latest
+    image: ghcr.io/ningkingstar/moontvplus:latest
     container_name: moontv-core
     restart: on-failure
     ports:
@@ -311,7 +317,7 @@ volumes:
 ```yml
 services:
   moontv-core:
-    image: ghcr.io/mtvpls/moontvplus:latest
+    image: ghcr.io/ningkingstar/moontvplus:latest
     container_name: moontv-core
     restart: on-failure
     ports:
@@ -331,7 +337,7 @@ services:
 ```yml
 services:
   moontv-core:
-    image: ghcr.io/mtvpls/moontvplus:latest
+    image: ghcr.io/ningkingstar/moontvplus:latest
     container_name: moontv-core
     restart: on-failure
     ports:
@@ -368,7 +374,7 @@ networks:
 ```yml
 services:
   moontv-core:
-    image: ghcr.io/mtvpls/moontvplus:latest
+    image: ghcr.io/ningkingstar/moontvplus:latest
     container_name: moontv-core
     restart: on-failure
     ports:
@@ -383,14 +389,14 @@ services:
 
 #### Lite 镜像说明
 
-`ghcr.io/mtvpls/moontvplus-lite:latest` 为更小的镜像，但不支持启动内置观影室服务，也不支持 SQLite（`NEXT_PUBLIC_STORAGE_TYPE=d1`）自动初始化方案。
+`ghcr.io/ningkingstar/moontvplus-lite:latest` 为更小的镜像，但不支持启动内置观影室服务，也不支持 SQLite（`NEXT_PUBLIC_STORAGE_TYPE=d1`）自动初始化方案。
 
 示例：
 
 ```yml
 services:
   moontv-core:
-    image: ghcr.io/mtvpls/moontvplus-lite:latest
+    image: ghcr.io/ningkingstar/moontvplus-lite:latest
     container_name: moontv-core
     restart: on-failure
     ports:
@@ -481,7 +487,7 @@ dockge/komodo 等 docker compose UI 也有自动更新功能
 | ---------------------------------------- | ------------------------------------------------------------ | --------------------------- | ------------------------------------------------------------ |
 | USERNAME                                 | 站长账号                                                     | 任意字符串                  | 无默认，必填字段                                             |
 | PASSWORD                                 | 站长密码                                                     | 任意字符串                  | 无默认，必填字段                                             |
-| CRON_PASSWORD                            | 定时任务 API 访问密码（用于保护 /api/cron 端点）             | 任意字符串                  | mtvpls                                                       |
+| CRON_PASSWORD | 定时任务 API 访问密码（用于保护 /api/cron 端点）；未设置时该端点返回 503、内置定时任务停用。Vercel 部署时 `vercel.json` 的 `crons.path` 必须与这里填的口令一致 | 任意字符串 | 无默认，必填（否则定时任务不可用） |
 | CRON_WAIT_FOR_COMPLETION                 | 定时任务接口是否等待任务完全结束后再返回响应（true 时返回 200，false 时立即返回 202）。部署在 serverless 平台（如 Vercel）时建议设置为 true，否则响应返回后异步执行可能会被平台杀后台导致任务中断 | true/false                  | false                                                        |
 | CRON_USER_BATCH_SIZE                     | 定时任务用户批处理大小（控制并发处理的用户数量，影响播放记录和收藏更新任务的并发性能） | 正整数                      | 3                                                            |
 | SITE_BASE                                | 站点 url                                                     | 形如 https://example.com    | 空                                                           |
@@ -526,7 +532,9 @@ dockge/komodo 等 docker compose UI 也有自动更新功能
 | TMDB_PROXY                               | TMDB 代理地址                                                | URL                         | (空)                                                         |
 | TMDB_REVERSE_PROXY                       | TMDB 反向代理地址                                            | URL                         | (空)                                                         |
 | DANMAKU_API_BASE                         | 弹幕 API 地址                                                | URL                         | http://localhost:9321                                        |
-| DANMAKU_API_TOKEN                        | 弹幕 API Token                                               | 任意字符串                  | 87654321                                                     |
+| DANMAKU_API_TOKEN | 弹幕 API Token | 任意字符串 | (空) |
+| BUILTIN_DANMAKU_API_BASE | 后台「内置弹幕源」的接口地址（自建 danmu_api），未设置时「内置源」按自定义地址请求 | URL | (空) |
+| BUILTIN_DANMAKU_API_TOKEN | 后台「内置弹幕源」的访问令牌 | 任意字符串 | (空) |
 | DATA_MIGRATION_CHUNK_SIZE                | 数据迁移批处理大小（控制导入导出时每批处理的用户数量和数据条数） | 正整数                      | 10                                                           |
 | QR_LOGIN_STORE_MODE                      | 电视端扫码登录状态存储模式；serverless环境下多节点内存状态不可靠。 | auto、memory、hybrid、shared | auto                                                         |
 | WEB_PUSH_PROXY                           | Web Push 服务端发送代理地址，用于服务器访问 FCM 等 Push endpoint | HTTP/HTTPS 代理 URL          | (空)                                                         |
@@ -679,6 +687,14 @@ NEXT_PUBLIC_VOICE_CHAT_STRATEGY 选项解释：
 
 [MIT](LICENSE) © 2025 MoonTV & Contributors
 
+## 上游与许可
+
+- 上游项目：[Happier-X/MoonTVPlus](https://github.com/Happier-X/MoonTVPlus)。本仓库（[NingKingStar/MoonTVPlus](https://github.com/NingKingStar/MoonTVPlus)）是它的自用二次开发分支，历史提交与版权归原作者及贡献者所有。
+- 更早的血统：MoonTV（[LunaTV](https://github.com/MoonTechLab/LunaTV)）与 [LibreTV](https://github.com/LibreSpark/LibreTV)。
+- 许可：仓库中的 `LICENSE` 文件是 **CC BY-NC-SA 4.0**（署名—非商业性使用—相同方式共享），本仓库原样保留，未删除、未替换任何上游署名。上游历史 README 曾以 MIT 标注，两者的不一致属于上游遗留问题，如需变更授权只能由版权所有者决定。
+- 本仓库只提供代码与自部署方式，**不代表上游**，也不提供任何官方服务或公共实例。
+- 「生态应用」里的 MoonTVPlus-PC、Selene、OrionTV、浏览器扩展都由上游作者构建发布，属于**上游第三方构建**，链接仍指向上游仓库；本仓库不重新发布这些客户端。
+
 ## 致谢
 
 - [ts-nextjs-tailwind-starter](https://github.com/theodorusclarence/ts-nextjs-tailwind-starter) — 项目最初基于该脚手架。
@@ -692,4 +708,4 @@ NEXT_PUBLIC_VOICE_CHAT_STRATEGY 选项解释：
 
 ## Star History
 
-[![Star History Chart](https://star-history.dera.page/svg?repos=mtvpls/moontvplus&type=Date)](https://star-history.dera.page/#mtvpls/moontvplus&Date)
+[![Star History Chart](https://star-history.dera.page/svg?repos=NingKingStar/MoonTVPlus&type=Date)](https://star-history.dera.page/#NingKingStar/MoonTVPlus&Date)

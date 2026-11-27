@@ -31,7 +31,19 @@ export async function GET(
 ) {
   console.log(request.url);
 
-  const cronPassword = process.env.CRON_PASSWORD || 'mtvpls';
+  const cronPassword = process.env.CRON_PASSWORD;
+  if (!cronPassword) {
+    // 不再回退到任何内置默认口令：未配置时直接关闭该端点，
+    // 避免用可猜测的固定口令触发定时任务（收藏/播放记录更新、直播源刷新等）。
+    console.warn(
+      '[cron] CRON_PASSWORD is not set; /api/cron is disabled. Set CRON_PASSWORD to enable it.'
+    );
+    return NextResponse.json(
+      { success: false, message: 'Cron disabled: CRON_PASSWORD is not set' },
+      { status: 503 }
+    );
+  }
+
   if (params.password !== cronPassword) {
     return NextResponse.json(
       { success: false, message: 'Unauthorized' },

@@ -7939,8 +7939,8 @@ const SiteConfigComponent = ({
     DisableYellowFilter: false,
     FluidSearch: true,
     DanmakuSourceType: 'builtin',
-    DanmakuApiBase: 'https://mtvpls-danmu.netlify.app/87654321',
-    DanmakuApiToken: '87654321',
+    DanmakuApiBase: '',
+    DanmakuApiToken: '',
     DanmakuAutoLoadDefault: true,
     TMDBApiKey: '',
     TMDBProxy: '',
@@ -8738,7 +8738,7 @@ const SiteConfigComponent = ({
           {siteSettings.DanmakuSourceType !== 'custom' && (
             <p className='text-xs text-amber-600 dark:text-amber-400'>
               ⚠️
-              内置弹幕源为多人共享服务，稳定性可能受使用高峰影响，建议自行部署后使用自定义源。
+              内置弹幕源由本实例的部署方提供：需在部署环境设置 BUILTIN_DANMAKU_API_BASE（可选 BUILTIN_DANMAKU_API_TOKEN），未设置时按自定义源地址请求。建议自建 danmu_api 后使用自定义源。
             </p>
           )}
 
