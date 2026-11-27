@@ -275,6 +275,35 @@ fn proxy_url() -> Option<&'static str> {
         .as_deref()
 }
 
+/// Loopback and LAN targets must never go through the system proxy; the
+/// isolated contract tests and a self-hosted instance both rely on that.
+fn is_loopback_or_private(host: &str) -> bool {
+    let host = host
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .to_ascii_lowercase();
+    if host == "localhost" || host.ends_with(".localhost") || host == "::1" {
+        return true;
+    }
+    if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+        return match ip {
+            std::net::IpAddr::V4(v4) => v4.is_loopback() || v4.is_private() || v4.is_link_local(),
+            std::net::IpAddr::V6(v6) => v6.is_loopback(),
+        };
+    }
+    host.ends_with(".local")
+}
+
+/// Proxy for one target URL, or `None` for loopback/LAN hosts.
+fn proxy_for(url: &str) -> Option<&'static str> {
+    let host = url::Url::parse(url).ok()?.host_str()?.to_string();
+    if is_loopback_or_private(&host) {
+        None
+    } else {
+        proxy_url()
+    }
+}
+
 fn agent(seconds: u64, proxy: Option<&str>) -> ureq::Agent {
     let mut builder = ureq::AgentBuilder::new()
         .redirects(0)
@@ -283,6 +312,17 @@ fn agent(seconds: u64, proxy: Option<&str>) -> ureq::Agent {
         builder = builder.proxy(proxy);
     }
     builder.build()
+}
+
+/// Builder that resolves the same proxy as ordinary API calls. Streaming
+/// paths (SSE search, media relay) must use this too, otherwise they silently
+/// bypass the proxy and fail on networks where direct access is blocked.
+pub fn proxy_agent_builder(url: &str) -> ureq::AgentBuilder {
+    let mut builder = ureq::AgentBuilder::new();
+    if let Some(proxy) = proxy_for(url).and_then(|p| ureq::Proxy::new(p).ok()) {
+        builder = builder.proxy(proxy);
+    }
+    builder
 }
 
 /// `ureq::Error` is large; box it so the closure stays cheap to match on.
@@ -298,7 +338,7 @@ pub async fn raw(r: Request, seconds: u64) -> Result<Response, ApiError> {
     let (tx, rx) = tokio::sync::oneshot::channel();
     std::thread::spawn(move || {
         let result = (|| {
-            let proxy = proxy_url();
+            let proxy = proxy_for(&r.url);
             let mut q = agent(seconds, proxy).request(&r.method, &r.url);
             for (n, v) in &r.headers {
                 q = q.set(n, v);

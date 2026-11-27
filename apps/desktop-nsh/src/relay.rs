@@ -224,7 +224,7 @@ fn fetch(
     if depth > 2 {
         return Err("too many redirects".to_owned());
     }
-    let agent = ureq::AgentBuilder::new()
+    let agent = crate::api_transport::proxy_agent_builder(upstream)
         .redirects(0)
         .timeout(Duration::from_secs(20))
         .build();

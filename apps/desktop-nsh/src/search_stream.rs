@@ -270,7 +270,7 @@ fn worker(
         }
     };
     for attempt in 0..2 {
-        let agent = ureq::AgentBuilder::new()
+        let agent = api_transport::proxy_agent_builder(&url)
             .redirects(0)
             .timeout_connect(Duration::from_secs(10))
             .timeout_read(Duration::from_secs(15))
