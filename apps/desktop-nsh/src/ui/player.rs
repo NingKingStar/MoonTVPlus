@@ -369,6 +369,29 @@ pub fn PlayerPage() -> impl IntoElement {
                     }
                 }))
                 .children(portrait_mode.then(|| chip("竖屏短剧", ACCENT, DEMO_TINT)))
+                .child(dynamic(move || {
+                    let notice = player.get().notice;
+                    if notice.is_empty() {
+                        view().into_element()
+                    } else {
+                        view()
+                            .h(px(24.0))
+                            .max_w(px(260.0))
+                            .px(px(9.0))
+                            .rounded_full()
+                            .bg(DEMO_TINT)
+                            .border_1()
+                            .border_color(alpha(0xe9b872, 0.32))
+                            .items_center()
+                            .child(
+                                text(notice)
+                                    .text_size(px(10.5))
+                                    .text_color(ACCENT)
+                                    .number_of_lines(1),
+                            )
+                            .into_element()
+                    }
+                }))
                 .child(favorite_button())
                 .child(control_icon(Icon::Panel, "选集与换源", move || {
                     let mut state = player.get();

@@ -26,6 +26,9 @@ const port = Number(arg('port', '0'));
 // A slow source makes the incremental-vs-complete order visible; the hold
 // instance used for UI screenshots stretches it further.
 const slowMs = Number(process.env.FIXTURE_SLOW_MS || 1500);
+// Screenshot-only knob: make the mirror source's media fail so the client's
+// automatic backup-source path can be seen without a real broken provider.
+const badMirror = process.env.FIXTURE_BAD_MIRROR === '1';
 
 const MIME = {
   '.m3u8': 'application/vnd.apple.mpegurl',
@@ -158,6 +161,30 @@ function withPort(list, selfBase) {
   return JSON.parse(JSON.stringify(list).replaceAll('127.0.0.1:PORT', host));
 }
 
+// A second source with the same title/year as fixture-a/1001. This is what
+// makes source switching and "remember the chosen source" observable without
+// a real third-party provider.
+function mirrorCatalog(base) {
+  return [
+    {
+      vod_id: 2001,
+      vod_name: '回声档案',
+      vod_pic: `${base}/media/poster.svg`,
+      vod_remarks: '第二片源 · 2 集',
+      vod_year: '2026',
+      type_name: '科幻',
+      type_id: 1,
+      vod_class: '科幻 / 悬疑',
+      vod_play_from: 'm3u8',
+      vod_content: '<p>同一作品的第二片源夹具。</p>',
+      vod_play_url: [
+        `第 1 集$${badMirror ? 'http://127.0.0.1:PORT/media/missing.m3u8' : 'http://127.0.0.1:PORT/media/fmp4/index.m3u8'}`,
+        `第 2 集$${badMirror ? 'http://127.0.0.1:PORT/media/missing2.m3u8' : 'http://127.0.0.1:PORT/media/ts/index.m3u8'}`,
+      ].join('#'),
+    },
+  ];
+}
+
 function json(res, status, body) {
   const text = JSON.stringify(body);
   res.writeHead(status, {
@@ -249,9 +276,35 @@ const server = createServer((req, res) => {
   }
 
   if (match[1] === 'c') {
-    // A slow source that returns nothing after the fast source answered.
-    // It keeps the incremental-vs-complete ordering observable.
+    // A slow second source with the same work as fixture-a/1001. It has no
+    // short-drama class, so the short-drama source list still excludes it.
     setTimeout(() => {
+      const ac = url.searchParams.get('ac');
+      const mirror = withPort(mirrorCatalog(selfBase), selfBase);
+      if (ac === 'list') {
+        json(res, 200, {
+          code: 1,
+          msg: '数据列表',
+          class: [{ type_id: 1, type_name: '电影', type_pid: 0 }],
+        });
+        return;
+      }
+      if (ac === 'videolist') {
+        const ids = url.searchParams.get('ids');
+        const list = ids
+          ? mirror.filter((item) => ids.split(',').includes(String(item.vod_id)))
+          : mirror;
+        json(res, 200, {
+          code: 1,
+          msg: '数据列表',
+          page: Number(url.searchParams.get('pg') || 1),
+          pagecount: 1,
+          limit: '20',
+          total: list.length,
+          list,
+        });
+        return;
+      }
       json(res, 200, { code: 1, msg: '数据列表', page: 1, pagecount: 0, limit: '20', total: 0, list: [] });
     }, slowMs);
     return;

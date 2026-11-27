@@ -49,7 +49,7 @@
 |R 真实待联调|10|实例/登录/搜索/详情/收藏/记录/刷新已有原生代码；这 10 项都已在本仓服务端的隔离实例上跑通契约，真实部署实例、权限组合与生产数据仍未验|
 |U 未做|112|包括没有原生实现或仅写了方案的功能；写文档不算完成、不算验收|
 |真实接口验收通过（生产实例）|0|本轮没有任何生产实例访问；不以 mock 或隔离实例通过代替生产兼容验收|
-|隔离实例契约检查|P0 39/39；P1 57/57；P1c 69/69|本仓服务端代码 + 一次性 SQLite 库 + 受控片源，仅 127.0.0.1；P0 见 [P0 契约报告](../apps/desktop-nsh/docs/p0-contract-2026-11-24.md)，P1 见 [P1 契约报告](../apps/desktop-nsh/docs/p1-contract-2026-11-24.md)，P1c 见 [P1c 契约报告](../apps/desktop-nsh/docs/p1c-contract-2026-11-27.md)。P1 的 D05/D06 为外部豆瓣公网数据，单独标注|
+|隔离实例契约检查|P0 39/39；P1 57/57；P1c 69/69；P1d 70/70|本仓服务端代码 + 一次性 SQLite 库 + 受控片源，仅 127.0.0.1；P0 见 [P0 契约报告](../apps/desktop-nsh/docs/p0-contract-2026-11-24.md)，P1 见 [P1 契约报告](../apps/desktop-nsh/docs/p1-contract-2026-11-24.md)，P1c 见 [P1c 契约报告](../apps/desktop-nsh/docs/p1c-contract-2026-11-27.md)，P1d 见 [P1d 契约报告](../apps/desktop-nsh/docs/p1d-contract-2026-11-27.md)。P1 的 D05/D06 为外部豆瓣公网数据，单独标注|
 
 ## 2026-11-24 P0 实施进展（与上面的研究稿分开读）
 
@@ -94,6 +94,19 @@ P0 之后只做了 P1 的第一步，范围是搜索增量/建议历史/豆瓣�
 |夹具|CMS class（电影/剧集/短剧 + 子类）、2 条/页分页、`vod_play_from`、短剧 3 条、双 scheme URL 修正|`tests/contract/fixture-source.mjs`|
 |构建门禁|fmt / clippy `-D warnings` / 39 单测 + 2 集成测试 / release 构建全绿|本地实测|
 |未验证|真实部署实例、真实/脚本/special 源、真实短剧竖屏视频、播后滚动恢复、Linux、多屏/DPI、触摸手势|见 P1c 契约报告|
+
+## 2026-11-27 P1 第三批（播放页：多源切换 / 源记忆 / 失败备用源）
+
+|项目|状态|证据|
+|---|---|---|
+|版本与包|moontv-native 0.6.0；便携包 `moontv-native-0.6.0-windows-x64-portable.zip` + SHA256（包内 exe 与 release 产物一致；0.3–0.5 旧包已删，只留最新）|`apps/desktop-nsh/dist/`（不入库）|
+|PLY-03 多源切换|详情选集区显示当前源名/集数与候选源按钮；切源保留集号，新源不足回第 1 集，不套用新源旧进度|`src/ui/pages.rs`、`src/state.rs`、隔离契约 C08/C08b、截图 33–35|
+|源记忆|`Library.last_sources` 按作品 key 只写本机库；进入作品优先级为记忆源 > 显式源 > 默认排序；源不存在时回退|`src/model.rs`、`src/state.rs`、`live_contract`、截图 34|
+|失败备用源|媒体错误时按候选顺序尝试未试源，每个源一次；成功提示「已切换到备用源」并重试当前集，全部失败恢复原错误与重试|`src/state.rs`、`src/ui/player.rs`、`src/model.rs`、无真实 UI 截图|
+|夹具|`fixture-c/2001` 同名同年第二源（2 集）；`FIXTURE_BAD_MIRROR=1` 只给手工复现用，契约不启用|`tests/contract/fixture-source.mjs`|
+|构建门禁|fmt / clippy `-D warnings` / 45 单测 + 2 集成测试 / release 构建全绿|本地实测|
+|隔离实例契约|70/70 通过（新增 C08b 多源独立、R01 源记忆/备用源纯函数）|`apps/desktop-nsh/docs/p1d-contract-2026-11-27.md`、`.json`|
+|未验证|真实媒体断流后的自动换源手感、真实第三方源、Linux/多屏/DPI|坏媒体回退已由隔离实例日志确认；失败提示条未留截图，真实媒体仍需人工验收|
 
 ## README、现有实现与缺失功能的界线
 

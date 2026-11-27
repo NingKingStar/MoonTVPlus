@@ -133,6 +133,33 @@ fn group_key(raw: &str) -> String {
     out
 }
 
+/// The source a work opens with: the remembered one when it still exists,
+/// then an explicit source from the caller, then the first candidate in the
+/// existing sorted order. Never invents a source that is not in the work.
+pub fn preferred_source(
+    work: &Work,
+    remembered: Option<&str>,
+    explicit: Option<&str>,
+) -> Option<String> {
+    let valid = |source: &str| work.candidates.iter().any(|c| c.source == source);
+    if let Some(source) = remembered.filter(|source| valid(source)) {
+        return Some(source.to_string());
+    }
+    if let Some(source) = explicit.filter(|source| valid(source)) {
+        return Some(source.to_string());
+    }
+    work.candidates.first().map(|c| c.source.clone())
+}
+
+/// The next candidate to try after a playback failure. `tried` includes the
+/// current source; candidates keep the work's existing weight order.
+pub fn next_backup_candidate(work: &Work, current: &str, tried: &[String]) -> Option<Candidate> {
+    work.candidates
+        .iter()
+        .find(|c| c.source != current && !tried.iter().any(|seen| seen == &c.source))
+        .cloned()
+}
+
 /// Groups results for display. Identity is still each candidate; grouping
 /// needs an equal normalised title and an equal year.
 pub fn group_results(results: Vec<Candidate>) -> Vec<Work> {
@@ -372,6 +399,10 @@ pub struct Library {
     pub favorites: Vec<FavoriteEntry>,
     #[serde(default)]
     pub progress: Vec<ProgressEntry>,
+    /// Last source the user picked or played for a work, keyed by the work's
+    /// `title\u{1f}year`. Local only: never sent to the instance.
+    #[serde(default)]
+    pub last_sources: std::collections::BTreeMap<String, String>,
 }
 
 impl Library {
@@ -424,6 +455,18 @@ impl Library {
         self.progress.iter().find(|p| p.key == key)
     }
 
+    pub fn last_source(&self, work_key: &str) -> Option<&str> {
+        self.last_sources.get(work_key).map(String::as_str)
+    }
+
+    pub fn remember_source(&mut self, work_key: &str, source: &str) {
+        if work_key.is_empty() || source.is_empty() {
+            return;
+        }
+        self.last_sources
+            .insert(work_key.to_string(), source.to_string());
+    }
+
     /// Unfinished entries, newest first: what "continue watching" shows.
     pub fn continue_watching(&self) -> Vec<ProgressEntry> {
         let mut entries: Vec<ProgressEntry> = self
@@ -443,6 +486,7 @@ impl Library {
     pub fn clear_all(&mut self) {
         self.favorites.clear();
         self.progress.clear();
+        self.last_sources.clear();
     }
 }
 
@@ -808,6 +852,62 @@ mod tests {
         assert_eq!(added, 1);
         assert_eq!(existing.len(), 2);
         assert_eq!(existing[1].id, "2");
+    }
+
+    #[test]
+    fn remembers_one_source_per_work_locally() {
+        let mut library = Library::default();
+        assert_eq!(library.last_source("回声\u{1f}2026"), None);
+        library.remember_source("回声\u{1f}2026", "fixture-a");
+        library.remember_source("回声\u{1f}2026", "fixture-c");
+        assert_eq!(library.last_source("回声\u{1f}2026"), Some("fixture-c"));
+        library.remember_source("另一个\u{1f}2025", "fixture-a");
+        assert_eq!(library.last_source("另一个\u{1f}2025"), Some("fixture-a"));
+        library.clear_history();
+        assert_eq!(
+            library.last_source("回声\u{1f}2026"),
+            Some("fixture-c"),
+            "clearing watch history does not forget the chosen source"
+        );
+        library.clear_all();
+        assert_eq!(library.last_source("回声\u{1f}2026"), None);
+    }
+
+    #[test]
+    fn preferred_and_backup_sources_follow_the_contract() {
+        let mut first = candidate("回声", "2026", "fixture-a", "1");
+        first.source_name = "夹具 A".into();
+        first.weight = 40;
+        let mut second = candidate("回声", "2026", "fixture-c", "2");
+        second.source_name = "夹具 C".into();
+        second.weight = 20;
+        let work = Work::from_candidates(vec![second, first]).unwrap();
+        assert_eq!(
+            preferred_source(&work, Some("fixture-c"), Some("fixture-a")),
+            Some("fixture-c".into()),
+            "remembered source wins when it still exists"
+        );
+        assert_eq!(
+            preferred_source(&work, Some("gone"), Some("fixture-c")),
+            Some("fixture-c".into()),
+            "a missing remembered source falls back to the explicit one"
+        );
+        assert_eq!(
+            preferred_source(&work, Some("gone"), Some("also-gone")),
+            Some("fixture-a".into()),
+            "then to the first sorted candidate"
+        );
+        let backup = next_backup_candidate(&work, "fixture-a", &["fixture-a".into()])
+            .expect("second source");
+        assert_eq!(backup.source, "fixture-c");
+        assert!(
+            next_backup_candidate(
+                &work,
+                "fixture-c",
+                &["fixture-a".into(), "fixture-c".into()]
+            )
+            .is_none()
+        );
     }
 
     #[test]

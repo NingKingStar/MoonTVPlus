@@ -75,8 +75,8 @@ fn live_contract() {
         // --- search -----------------------------------------------------
         let results = api::search(&base, &token, "回声").await.expect("search");
         assert!(
-            results.len() >= 3,
-            "expected the fixture catalog, got {results:?}"
+            results.len() >= 4,
+            "expected both fixture sources, got {results:?}"
         );
         let current = results
             .iter()
@@ -96,6 +96,15 @@ fn live_contract() {
         );
         assert!(!current.desc.contains("<p>"));
 
+        let mirror = results
+            .iter()
+            .find(|c| c.source == "fixture-c" && c.id == "2001")
+            .expect("fixture-c mirror in results");
+        assert_eq!(mirror.title, "回声档案");
+        assert_eq!(mirror.year, "2026");
+        assert_eq!(mirror.source_name, "夹具 C（慢）");
+        assert_eq!(mirror.episodes.len(), 2);
+
         let works = group_results(results.clone());
         let years: Vec<&str> = works
             .iter()
@@ -107,6 +116,26 @@ fn live_contract() {
             works.iter().filter(|w| w.title == "回声档案").count(),
             1,
             "same title in two years must not be merged"
+        );
+        let echo = works
+            .iter()
+            .find(|w| w.title == "回声档案" && w.year == "2026")
+            .expect("2026 work");
+        assert_eq!(echo.candidates.len(), 2, "two sources for one work");
+        let backup = moontv_native::model::next_backup_candidate(
+            echo,
+            "fixture-a",
+            &["fixture-a".to_string()],
+        )
+        .expect("a backup source");
+        assert_eq!(backup.source, "fixture-c");
+        assert_eq!(
+            moontv_native::model::preferred_source(echo, Some("fixture-c"), None),
+            Some("fixture-c".to_string())
+        );
+        assert_eq!(
+            moontv_native::model::preferred_source(echo, Some("gone"), None),
+            Some(echo.candidates[0].source.clone())
         );
 
         // --- incremental SSE search --------------------------------------
@@ -165,7 +194,11 @@ fn live_contract() {
             }
         }
         assert_eq!(streamed, 3, "fixture A returned its three usable items");
-        assert_eq!(completions, (3, 3), "total results and completed sources");
+        assert_eq!(
+            completions,
+            (4, 3),
+            "two sources returned four results in total"
+        );
         let first_at = first_source_at.expect("a source result arrived");
         let complete_at = complete_at.expect("complete arrived");
         assert!(

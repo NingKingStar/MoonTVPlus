@@ -2920,7 +2920,6 @@ fn detail_body() -> AnyElement {
                                 .max_w(px(760.0))
                                 .number_of_lines(6),
                             )
-                            .child(source_tabs(&work, &candidate))
                             .children(loading.then(|| {
                                 text("正在刷新详情…".to_owned())
                                     .text_size(px(11.0))
@@ -3010,13 +3009,14 @@ fn detail_body() -> AnyElement {
                     .child(section_header(
                         "选集".to_owned(),
                         Some(format!(
-                            "{} · 共 {} 集{}",
+                            "当前源：{} · 共 {} 集{}",
                             candidate.source_name,
                             episode_count,
                             if candidate.remarks.is_empty() { String::new() } else { format!(" · {}", candidate.remarks) }
                         )),
                         None,
                     ))
+                    .child(source_tabs(&work, &candidate))
                     .child(episode_grid(&candidate, selected, progress.as_ref()))
                     .children((episode_count == 0).then(|| {
                         empty_state(
@@ -3050,13 +3050,6 @@ fn source_tabs(work: &Work, current: &Candidate) -> AnyElement {
     view()
         .gap(px(6.0))
         .child(
-            text("片源".to_owned())
-                .text_size(px(10.5))
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(FAINT)
-                .letter_spacing(px(0.8)),
-        )
-        .child(
             view()
                 .flex_row()
                 .flex_wrap()
@@ -3079,7 +3072,7 @@ fn source_tabs(work: &Work, current: &Candidate) -> AnyElement {
                         .items_center()
                         .gap(px(6.0))
                         .focusable(true)
-                        .role(AccessibilityRole::Tab)
+                        .role(AccessibilityRole::Button)
                         .label(candidate.source_name.clone())
                         .accessibility_state(AccessibilityState {
                             selected: active,
@@ -3088,17 +3081,25 @@ fn source_tabs(work: &Work, current: &Candidate) -> AnyElement {
                         .hover(|s| s.bg(HOVER))
                         .on_press(move || state::select_source(source.clone()))
                         .child(
-                            text(candidate.source_name.clone())
-                                .text_size(px(11.5))
-                                .font_weight(if active {
-                                    FontWeight::SEMIBOLD
-                                } else {
-                                    FontWeight::MEDIUM
-                                })
-                                .text_color(if active { TEXT } else { MUTED }),
+                            text(format!(
+                                "{}{}",
+                                candidate.source_name,
+                                if active { " · 当前" } else { "" }
+                            ))
+                            .text_size(px(11.5))
+                            .font_weight(if active {
+                                FontWeight::SEMIBOLD
+                            } else {
+                                FontWeight::MEDIUM
+                            })
+                            .text_color(if active {
+                                TEXT
+                            } else {
+                                MUTED
+                            }),
                         )
                         .child(
-                            text(candidate.episode_count().to_string())
+                            text(format!("{} 集", candidate.episode_count()))
                                 .text_size(px(10.0))
                                 .text_color(FAINT),
                         )

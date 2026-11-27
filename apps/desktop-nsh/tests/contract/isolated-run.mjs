@@ -145,7 +145,7 @@ function client(base) {
     const url = new URL(pathname, base).toString();
     const headers = { ...(options.headers || {}) };
     if (options.token) headers.authorization = `Bearer ${options.token}`;
-    if (!headers['user-agent']) headers['user-agent'] = 'MoonTVPlus App/0.5 NSH (Windows)';
+    if (!headers['user-agent']) headers['user-agent'] = 'MoonTVPlus App/0.6 NSH (Windows)';
     let body;
     if (options.json !== undefined) {
       headers['content-type'] = 'application/json';
@@ -474,6 +474,7 @@ async function runChecks({ call, base }) {
   const byId = new Map(items.map((item) => [`${item.source}+${item.id}`, item]));
   const a1001 = byId.get('fixture-a+1001');
   const a1003 = byId.get('fixture-a+1003');
+  const c2001 = byId.get('fixture-c+2001');
   const searchOk =
     search.status === 200 &&
     Boolean(a1001) &&
@@ -485,13 +486,31 @@ async function runChecks({ call, base }) {
     a1001.episodes.every((url) => url.endsWith('.m3u8')) &&
     a1001.episodes_titles?.length === 2 &&
     a1001.type_name === '科幻' &&
-    a1001.proxyMode === false;
+    a1001.proxyMode === false &&
+    Boolean(c2001) &&
+    c2001.title === '回声档案' &&
+    c2001.year === '2026' &&
+    c2001.source_name === '夹具 C（慢）' &&
+    c2001.episodes?.length === 2;
   record(
     'C08',
-    '搜索返回完整条目：集表/标题/年份/类型/片源名',
+    '搜索返回完整条目（含同作品第二片源）：集表/标题/年份/类型/片源名',
     searchOk,
-    `HTTP ${search.status} results=${items.length} episodes=${a1001?.episodes?.length} year=${a1001?.year}`,
-    { status: search.status, count: items.length, episodeTitles: a1001?.episodes_titles }
+    `HTTP ${search.status} results=${items.length} aEpisodes=${a1001?.episodes?.length} cEpisodes=${c2001?.episodes?.length} year=${a1001?.year}`,
+    {
+      status: search.status,
+      count: items.length,
+      episodeTitles: a1001?.episodes_titles,
+      mirror: c2001,
+    }
+  );
+
+  record(
+    'C08b',
+    '同一作品在第二个片源下保留独立 source/id（客户端可切换源）',
+    Boolean(c2001) && c2001.title === a1001?.title && c2001.year === a1001?.year,
+    `fixture-a=${a1001?.id} fixture-c=${c2001?.id}`,
+    { a: a1001?.id, c: c2001?.id }
   );
 
   const sameTitle = a1001 && a1003 && a1001.title === a1003.title && a1001.year !== a1003.year;
@@ -542,7 +561,7 @@ async function runChecks({ call, base }) {
 
   const uaApp = await call('GET', 'api/source-detail?source=fixture-a&id=1001', {
     token,
-    headers: { 'user-agent': 'MoonTVPlus App/0.5 NSH (Windows)' },
+    headers: { 'user-agent': 'MoonTVPlus App/0.6 NSH (Windows)' },
   });
   const proxied = (uaApp.json?.episodes || []).every((url) => String(url).includes('/api/proxy-m3u8?url='));
   record(
@@ -596,7 +615,7 @@ async function runChecks({ call, base }) {
   // ---- SSE -------------------------------------------------------------
   const sse = await readSse(`${base}api/search/ws?q=%E5%9B%9E%E5%A3%B0`, {
     authorization: `Bearer ${token}`,
-    'user-agent': 'MoonTVPlus App/0.5 NSH (Windows)',
+    'user-agent': 'MoonTVPlus App/0.6 NSH (Windows)',
     accept: 'text/event-stream',
   });
   const types = sse.events.map((event) => event.type);
@@ -610,7 +629,7 @@ async function runChecks({ call, base }) {
     startEvent?.totalSources === 3 &&
     okEvent?.results?.length === 3 &&
     completeEvent?.completedSources === 3 &&
-    completeEvent?.totalResults === 3;
+    completeEvent?.totalResults === 4;
   record(
     'C18',
     'SSE 搜索：start / source_result / complete 与计数（3 源，含慢源）',
@@ -1489,7 +1508,7 @@ function writeReport(context) {
   const failed = results.length - passed;
   const report = {
     generatedAt: new Date().toISOString(),
-    baseline: '2d8e9460',
+    baseline: 'f8488a27',
     kind: 'isolated-instance-contract',
     runDir,
     instance: context?.base || null,

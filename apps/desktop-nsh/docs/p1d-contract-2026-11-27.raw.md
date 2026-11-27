@@ -1,0 +1,91 @@
+# Isolated desktop contract run (P0 + P1 increments)
+
+- generated: 2026-11-27T07:36:09.238Z
+- instance: http://127.0.0.1:57178/
+- database: C:\Users\admin\AppData\Local\Temp\moontv-nsh-contract-20261127T073546\data\moontv.db
+- controlled upstream: http://127.0.0.1:57175
+- checks: 70/70 passed, 0 failed, 0 skipped (external)
+
+| id | check | result | detail |
+|---|---|---|---|
+| C01 | server-config 提供 StorageType 与 Turnstile 开关 | pass | HTTP 200 StorageType=d1 turnstile=false |
+| C02 | 错误密码是 401，不泄露账号存在性 | pass | HTTP 401 用户名或密码错误 |
+| C03 | 空用户名是参数错误 400 | pass | HTTP 400 用户名不能为空 |
+| C04 | 密码登录返回 bearer token 与 owner 身份 | pass | HTTP 200 role=owner tokenId=ea64ff… |
+| C05 | refresh 有效期是 60 天 | pass | 60.000 天 |
+| C06 | 无凭据访问收藏是 401 | pass | HTTP 401 |
+| C07 | 无法解析的 token 是 401 | pass | HTTP 401 |
+| C08 | 搜索返回完整条目（含同作品第二片源）：集表/标题/年份/类型/片源名 | pass | HTTP 200 results=4 aEpisodes=2 cEpisodes=2 year=2026 |
+| C08b | 同一作品在第二个片源下保留独立 source/id（客户端可切换源） | pass | fixture-a=1001 fixture-c=2001 |
+| C09 | 同名不同年作为不同条目返回（合并在客户端） | pass | 2026=2026 2020=2020 |
+| C10 | 集表只接受 .m3u8：仅 MP4 的条目被服务端丢弃 | pass | 1004 未出现在结果中 |
+| C11 | 空查询返回空结果而不是错误 | pass | HTTP 200 results=0 |
+| C12 | source-detail 返回实时集表、年份与去标签简介 | pass | HTTP 200 episodes=2 descLen=21 |
+| C13 | APP UA + 已配置源：集地址改写为站内去广告代理 | pass | HTTP 200 episodes=2 proxied=true |
+| C14 | 浏览器 UA 不改写，与 APP 行为分离 | pass | HTTP 200 proxied=false |
+| C15 | 无可用集表的详情返回可识别错误（不是空 200） | pass | HTTP 500 详情没有可用剧集 |
+| C16 | 非法视频 ID 被拒绝 400 | pass | HTTP 400 无效的视频ID格式 |
+| C17 | 未知片源被拒绝 400 | pass | HTTP 400 无效的API来源 |
+| C18 | SSE 搜索：start / source_result / complete 与计数（3 源，含慢源） | pass | HTTP 200 ct=text/event-stream types=start,source_result,source_result,source_result,complete |
+| S01 | SSE 增量：快源结果先于慢源与 complete 到达（不是等整批） | pass | 首源 +157ms，慢源 +1670ms，complete +1670ms |
+| C18b | 上游 500 在 SSE 里只是空 source_result，没有 source_error | pass | fixture-b results=0 source_error=false |
+| G01 | 搜索建议返回 suggestions[{text,type}]，且能从夹具首个源得到真实标题 | pass | HTTP 200 count=1 first=回声档案 |
+| G02 | 空查询的建议是空数组，不触发上游搜索 | pass | HTTP 200 |
+| G03 | 无凭据不能读取搜索建议 | pass | HTTP 401 |
+| H01 | 搜索历史初始为空数组 | pass | HTTP 200 body=[] |
+| H02 | POST 搜索历史返回最新列表，GET 读回同一关键词 | pass | HTTP 200 list=["回声"] |
+| H03 | 最新搜索排在最前，旧关键词仍在 | pass | list=["暮色","回声"] |
+| H04 | 空白关键词被拒绝 400 | pass | HTTP 400 |
+| H05 | 按关键词删除只影响这一条 | pass | HTTP 200 left=["暮色"] |
+| H06 | 不带关键词的 DELETE 清空全部搜索历史 | pass | HTTP 200 left=[] |
+| H07 | 无凭据不能读取搜索历史 | pass | HTTP 401 |
+| B01 | Bangumi 日历经实例配置的本地 base URL 读取，7 天与中英文名原样返回 | pass | HTTP 200 days=7 monday=星期一 |
+| D01 | 豆瓣分类缺少 category/type 时是 400，不伪造结果 | pass | HTTP 400 缺少必要参数: kind 或 category 或 type |
+| D02 | 豆瓣分类 kind 只接受 tv/movie | pass | HTTP 400 kind 参数必须是 tv 或 movie |
+| D03 | 豆瓣分类 limit 越界是 400 | pass | HTTP 400 |
+| D04 | 豆瓣推荐缺少 kind 是 400 | pass | HTTP 400 |
+| D05 | 豆瓣热门电影（外网经实例）返回带 id/标题/海报的列表 | pass | HTTP 200 items=8 first=可能的爱 |
+| D06 | 豆瓣番剧筛选（外网经实例）返回带年份/评分的列表 | pass | HTTP 200 items=8 first=爱，死亡和机器人 第一季 |
+| W01 | 单源浏览的源列表需要登录，且只返回当前账号可用源 | pass | anon=401 sites=fixture-a,fixture-b,fixture-c |
+| W02 | 片源分类返回类型→分类的父子关系（type_pid/pid 原样） | pass | classes=5 childPid=8 |
+| W03 | 单源分类第 1 页：2 条、pageCount=2、每条带可播集表 | pass | HTTP 200 rows=2 pageCount=2 |
+| W04 | 单源分类第 2 页不重复第 1 页，末页只有 1 条 | pass | rows=1 page=2 |
+| W05 | 源内搜索按关键词返回该源自己的结果，并保留 source/source_name | pass | HTTP 200 rows=2 |
+| W06 | 不可用源是 404，缺分类/缺关键词是 400（不伪造空成功） | pass | source=404 category=400 keyword=400 |
+| U01 | 短剧源只包含声明了短剧分类的采集源（夹具 A，排除夹具 C） | pass | sites=fixture-a |
+| U02 | 短剧分类保留一级短剧与其子分类 | pass | categories=3 |
+| U03 | 短剧第 1 页：2 条、pageCount=2、每条带 m3u8 集表 | pass | HTTP 200 rows=2 pageCount=2 |
+| U04 | 短剧第 2 页不重复第 1 页 | pass | rows=1 |
+| U05 | 未知短剧源是 404，不返回空成功 | pass | HTTP 404 未找到短剧采集源: nope |
+| U06 | 热播短剧返回带可播集表的条目；无条目时明确为空而不是报错 | pass | HTTP 200 rows=2 |
+| C19 | 收藏完整载荷往返：字段不丢、key 为 source+id | pass | HTTP 200 fields=source_name,total_episodes,title,year,cover,save_time,search_title,origin,is_completed,vod_remarks |
+| C20 | 按 key 读取单条收藏 | pass | HTTP 200 |
+| C21 | 收藏缺少 source_name 被拒绝 400 | pass | HTTP 400 |
+| C22 | 收藏 key 缺少 +id 被拒绝 400 | pass | HTTP 400 |
+| C23 | 观看记录写入/读回：1 基集号与秒单位不失真 | pass | HTTP 200 index=2 play_time=37.25 total_time=1201.5 |
+| C24 | origin 不落库，但 live_ 前缀可用于排除直播记录 | pass | origin=(未保存) is_anime=false is_duanju=false |
+| C25 | 集号 0 被拒绝（服务端要求 1 基） | pass | HTTP 400 |
+| C26 | 同 key 再次写入是覆盖更新，不产生重复条目 | pass | HTTP 200 keys=1 play_time=300 |
+| C27 | 刷新保持 tokenId/refreshToken/60 天到期，只换 access 时间戳 | pass | HTTP 200 delta=10138 ms |
+| C28 | 刷新后的 token 立即可用于业务请求 | pass | HTTP 200 |
+| C29 | 过期的 access 部分仍可在 60 天内刷新 | pass | HTTP 200 |
+| C30 | 60 天到期后刷新是 401 | pass | HTTP 401 Refresh token expired |
+| C31 | 伪造 refreshToken 被拒绝 401 | pass | HTTP 401 |
+| C32 | 未开启代理模式的源访问代理是 403（权限拒绝不是会话过期） | pass | HTTP 403 Proxy mode not enabled for this source |
+| C33 | 封禁账号刷新是 403 | pass | HTTP 403 User banned |
+| C34 | 连续失败登录触发 429 并带 Retry-After | pass | 状态序列 401→401→401→401→401→429 retry-after=3600 |
+| C35 | 退出登录后旧凭据不能刷新（撤销真实生效） | pass | logout=200 refresh=401 |
+| C36 | 按 key 删除收藏是幂等的，未清空其它数据 | pass | HTTP 200 remaining=0 |
+| C37 | 按 key 删除播放记录 | pass | HTTP 200 remaining=0 |
+| R01 | 真实客户端代码走完登录/搜索/SSE 增量/建议/历史/单源/短剧/详情/收藏/记录/日历/刷新/退出 | pass | cargo test --test live_contract exit=0 |
+
+## What is isolated and what is external
+
+- isolated: this repository's Next.js routes, a throwaway SQLite file, loopback ports and the local fixture source/Bangumi calendar under this run directory.
+- external: D05/D06 call Douban's public API through the isolated instance. They are reported as skip when the network is unavailable and are never counted as verified.
+- not verified here: a real deployed instance, real third-party sources, Windows/Linux audio/video, DPI, packaging, CI or deployment.
+
+## Notes
+
+- test databases are created only under this run directory; .data is never read
+- configured sources: fixture-a, fixture-b, fixture-c; banned account: nsh-contract-banned

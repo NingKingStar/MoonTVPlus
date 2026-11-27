@@ -1,4 +1,4 @@
-﻿//! Application state: session, navigation, search, detail, player and the
+//! Application state: session, navigation, search, detail, player and the
 //! persisted library. Signals are the single source of truth; pages read
 //! them and handlers update them.
 
@@ -441,6 +441,9 @@ pub struct DetailState {
     pub selected_episode: usize,
     /// Entered from the short-drama page: show the portrait autoplay action.
     pub duanju: bool,
+    /// Set when the user switches source: keep the current episode (clamped)
+    /// instead of adopting the new source's saved progress.
+    pub keep_episode: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -499,6 +502,11 @@ pub struct PlayerState {
     pub portrait: bool,
     pub muted: bool,
     pub notice: String,
+    /// Sources already tried for this episode after media errors. Reset when
+    /// a new episode/source is started manually.
+    pub fallback_tried: Vec<String>,
+    /// The first playback error, restored when every backup fails.
+    pub fallback_error: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -533,6 +541,8 @@ impl Default for PlayerState {
             portrait: false,
             muted: false,
             notice: String::new(),
+            fallback_tried: Vec::new(),
+            fallback_error: String::new(),
         }
     }
 }
@@ -3129,17 +3139,9 @@ fn open_detail_mode(mut work: Work, source: Option<String>, duanju: bool) {
     {
         work = full;
     }
-    let source = source
-        .filter(|source| {
-            work.candidates
-                .iter()
-                .any(|candidate| &candidate.source == source)
-        })
-        .or_else(|| {
-            work.candidates
-                .first()
-                .map(|candidate| candidate.source.clone())
-        })
+    let work_key = work.key();
+    let remembered = library().get().last_source(&work_key).map(str::to_owned);
+    let source = crate::model::preferred_source(&work, remembered.as_deref(), source.as_deref())
         .unwrap_or_default();
     let mut state = detail_state().get();
     state.work = Some(work);
@@ -3150,12 +3152,14 @@ fn open_detail_mode(mut work: Work, source: Option<String>, duanju: bool) {
     state.phase = LoadPhase::Loading;
     state.error.clear();
     state.duanju = duanju;
+    state.keep_episode = false;
     detail_state().set(state);
     go(Route::Detail(detail_state().get().work.clone().unwrap()));
     fetch_detail();
 }
 
 pub fn select_source(source: String) {
+    logbook::event("source_select", serde_json::json!({"source": source}));
     let mut state = detail_state().get();
     if state.source == source {
         return;
@@ -3164,8 +3168,22 @@ pub fn select_source(source: String) {
     state.generation += 1;
     state.phase = LoadPhase::Loading;
     state.error.clear();
+    state.keep_episode = true;
     detail_state().set(state);
     fetch_detail();
+}
+
+fn remember_last_source(work_key: &str, source: &str) {
+    if work_key.is_empty() || source.is_empty() {
+        return;
+    }
+    let mut lib = library().get();
+    if lib.last_source(work_key) == Some(source) {
+        return;
+    }
+    lib.remember_source(work_key, source);
+    library().set(lib);
+    save_library_now();
 }
 
 pub fn fetch_detail() {
@@ -3173,6 +3191,8 @@ pub fn fetch_detail() {
     let Some(work) = state.work.clone() else {
         return;
     };
+    let work_key = work.key();
+    let keep_episode = state.keep_episode;
     let source = state.source.clone();
     let fallback = work
         .candidates
@@ -3182,7 +3202,11 @@ pub fn fetch_detail() {
     if let Some(fallback) = &fallback {
         let mut current = detail_state().get();
         current.detail = Some(fallback.clone());
-        if let Some(progress) = library()
+        if keep_episode {
+            current.selected_episode = current
+                .selected_episode
+                .min(fallback.episode_count().saturating_sub(1));
+        } else if let Some(progress) = library()
             .get()
             .progress
             .iter()
@@ -3197,9 +3221,16 @@ pub fn fetch_detail() {
         let work = work.clone();
         let mut current = detail_state().get();
         current.detail = demo::detail(&work, &source).or(fallback);
+        if let Some(candidate) = &current.detail {
+            current.selected_episode = current
+                .selected_episode
+                .min(candidate.episode_count().saturating_sub(1));
+        }
+        current.keep_episode = false;
         current.phase = LoadPhase::Ready;
         current.error.clear();
         detail_state().set(current);
+        remember_last_source(&work_key, &source);
         return;
     }
     let session_now = session().get();
@@ -3229,13 +3260,25 @@ pub fn fetch_detail() {
         }
         match result {
             Ok(candidate) => {
+                let episode_count = candidate.episode_count();
                 let mut current = detail_state().get();
                 // A search result may have fresher artwork; keep the fetched
                 // detail as the source of truth.
                 current.detail = Some(candidate);
+                if keep_episode {
+                    current.selected_episode = current
+                        .selected_episode
+                        .min(episode_count.saturating_sub(1));
+                    current.keep_episode = false;
+                } else if let Some(progress) = library().get().progress.iter().find(|p| {
+                    p.key == format!("{}+{}", source, id) && p.episode_index < episode_count
+                }) {
+                    current.selected_episode = progress.episode_index;
+                }
                 current.phase = LoadPhase::Ready;
                 current.error.clear();
                 detail_state().set(current);
+                remember_last_source(&work_key, &source);
             }
             Err(error) => {
                 if error.is_auth() {
@@ -3331,6 +3374,7 @@ fn start_playback_mode(candidate: &Candidate, index: usize, portrait: bool) {
         .first()
         .map(|item| item.url.clone())
         .unwrap_or_default();
+    remember_last_source(&trace.work_key, &candidate.source);
     let mut state = player().get();
     state.trace = Some(trace);
     state.work = detail_state().get().work.clone().or_else(|| {
@@ -3362,6 +3406,8 @@ fn start_playback_mode(candidate: &Candidate, index: usize, portrait: bool) {
     state.portrait = portrait;
     state.muted = false;
     state.notice.clear();
+    state.fallback_tried.clear();
+    state.fallback_error.clear();
     player().set(state);
     go(Route::Player);
     logbook::event(
@@ -3406,6 +3452,8 @@ pub fn play_index(index: usize, resume: bool) {
     state.resume_attempts = 0;
     state.resume_done = false;
     state.notice.clear();
+    state.fallback_tried.clear();
+    state.fallback_error.clear();
     player().set(state);
     logbook::event("play_episode", serde_json::json!({"index": index}));
 }
@@ -3598,14 +3646,191 @@ pub fn observe_buffering(buffering: bool) {
 
 pub fn observe_error(message: impl Into<String>) {
     let message = message.into();
+    if switch_to_backup_source(&message) {
+        return;
+    }
+    fail_playback(&message);
+}
+
+fn fail_playback(message: &str) {
     let mut state = player().get();
     state.playing = false;
     state.phase = PlayPhase::Failed;
-    state.error = friendly_play_error(&message);
+    state.error = if state.fallback_error.is_empty() {
+        friendly_play_error(message)
+    } else {
+        state.fallback_error.clone()
+    };
     state.buffering = false;
+    let tried = state.fallback_tried.len();
     player().set(state);
     save_progress(true);
-    logbook::event("play_error", serde_json::json!({"message": message}));
+    logbook::event(
+        "play_error",
+        serde_json::json!({"message": message, "fallbacks_tried": tried}),
+    );
+}
+
+/// One visible step to another candidate source, on the same episode. The
+/// first error is kept for the final failed state; each candidate is tried at
+/// most once; the caller sees a `notice`/toast, never a silent swap.
+fn switch_to_backup_source(message: &str) -> bool {
+    let message = message.to_string();
+    let state = player().get();
+    if state.phase == PlayPhase::Loading && state.notice.contains("正在尝试备用源") {
+        // A duplicate media error from the failed element while the async
+        // detail fetch is already looking for a backup.
+        return true;
+    }
+    let Some(work) = state.work.clone() else {
+        return false;
+    };
+    let Some(trace) = state.trace.clone() else {
+        return false;
+    };
+    let episode = state.current().map(|item| item.index).unwrap_or(0);
+    let portrait = state.portrait;
+    let mut tried = state.fallback_tried.clone();
+    if !tried.iter().any(|source| source == &trace.source) {
+        tried.push(trace.source.clone());
+    }
+    let Some(next) = crate::model::next_backup_candidate(&work, &trace.source, &tried) else {
+        return false;
+    };
+    let first_error = if state.fallback_error.is_empty() {
+        friendly_play_error(&message)
+    } else {
+        state.fallback_error.clone()
+    };
+    let mut loading = player().get();
+    loading.fallback_tried = tried.clone();
+    loading.fallback_error = first_error.clone();
+    loading.phase = PlayPhase::Loading;
+    loading.playing = true;
+    loading.buffering = true;
+    loading.error.clear();
+    loading.notice = format!("主源播放失败，正在尝试备用源：{}", next.source_name);
+    player().set(loading);
+    logbook::event(
+        "play_fallback",
+        serde_json::json!({
+            "from": trace.source.clone(),
+            "to": next.source.clone(),
+            "episode": episode,
+            "reason": message.clone(),
+        }),
+    );
+
+    if !next.episodes.is_empty() {
+        start_playback_mode(&next, episode, portrait);
+        let mut switched = player().get();
+        if switched.trace.as_ref().map(|trace| trace.source.as_str()) == Some(next.source.as_str())
+        {
+            switched.fallback_tried = tried;
+            switched.fallback_error = first_error.clone();
+            switched.notice = format!("已切换到备用源：{}", next.source_name);
+            player().set(switched);
+            toast(
+                format!("播放失败，已切换到备用源：{}", next.source_name),
+                ToastTone::Info,
+            );
+            return true;
+        }
+        // The candidate had an episode list but no usable URL; try the next.
+        tried.push(next.source.clone());
+        let mut retry = player().get();
+        retry.fallback_tried = tried;
+        retry.fallback_error = first_error;
+        player().set(retry);
+        return switch_to_backup_source(&message);
+    }
+
+    let session_now = session().get();
+    let base = session_now.base.clone();
+    let token = session_now.token.clone();
+    let session_generation = session_now.generation;
+    let load_token = player().get().load_token;
+    let work_key = trace.work_key.clone();
+    spawn_global(async move {
+        let mut tried = tried;
+        let mut current_source = trace.source.clone();
+        loop {
+            if session().get().generation != session_generation
+                || player().get().load_token != load_token
+                || player()
+                    .get()
+                    .trace
+                    .as_ref()
+                    .map(|trace| trace.source.as_str())
+                    != Some(current_source.as_str())
+            {
+                return;
+            }
+            let Some(candidate) =
+                crate::model::next_backup_candidate(&work, &current_source, &tried)
+            else {
+                break;
+            };
+            tried.push(candidate.source.clone());
+            let fetched = if candidate.episodes.is_empty() {
+                api::detail(
+                    &base,
+                    &token,
+                    &candidate.source,
+                    &candidate.id,
+                    Some(&candidate),
+                )
+                .await
+            } else {
+                Ok(candidate.clone())
+            };
+            if session().get().generation != session_generation
+                || player().get().load_token != load_token
+            {
+                return;
+            }
+            match fetched {
+                Ok(full) if !full.episodes.is_empty() => {
+                    start_playback_mode(&full, episode, portrait);
+                    let mut state = player().get();
+                    state.fallback_tried = tried;
+                    state.fallback_error = first_error.clone();
+                    state.notice = format!("已切换到备用源：{}", full.source_name);
+                    player().set(state);
+                    remember_last_source(&work_key, &full.source);
+                    toast(
+                        format!("播放失败，已切换到备用源：{}", full.source_name),
+                        ToastTone::Info,
+                    );
+                    return;
+                }
+                Err(error) if error.is_auth() => {
+                    session_expired();
+                    return;
+                }
+                _ => {
+                    current_source = trace.source.clone();
+                    continue;
+                }
+            }
+        }
+        // Every candidate failed: restore the first error and let the user
+        // see the retry button.
+        let mut state = player().get();
+        state.fallback_tried = tried;
+        state.fallback_error = first_error.clone();
+        state.playing = false;
+        state.phase = PlayPhase::Failed;
+        state.error = first_error;
+        state.buffering = false;
+        player().set(state);
+        save_progress(true);
+        logbook::event(
+            "play_fallback_exhausted",
+            serde_json::json!({"episode": episode, "reason": message}),
+        );
+    });
+    true
 }
 
 fn friendly_play_error(message: &str) -> String {
@@ -3690,6 +3915,9 @@ pub fn retry() {
     state.resume_done = false;
     state.auto_in = None;
     state.auto_token += 1;
+    state.notice.clear();
+    state.fallback_tried.clear();
+    state.fallback_error.clear();
     // A same URL would leave the native video source untouched; force a
     // fresh load with a harmless retry query. The media/relay servers ignore
     // unknown query parameters.
