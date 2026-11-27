@@ -1,4 +1,4 @@
-//! Application state: session, navigation, search, detail, player and the
+﻿//! Application state: session, navigation, search, detail, player and the
 //! persisted library. Signals are the single source of truth; pages read
 //! them and handlers update them.
 
@@ -784,6 +784,9 @@ pub fn bootstrap() {
         nav().set(Nav::default());
     }
     session().set(state);
+    if !stored.demo_active && !stored.instance.is_empty() {
+        restore_session();
+    }
     logbook::event(
         "boot",
         serde_json::json!({
@@ -793,6 +796,54 @@ pub fn bootstrap() {
         }),
     );
     reset_search_history(&session().get().profile);
+}
+
+/// Resumes the DPAPI-sealed session from the last run before asking for a
+/// password again. A revoked or expired refresh window clears it.
+fn restore_session() {
+    let Some(saved) = crate::session_store::load() else {
+        return;
+    };
+    if saved.base.is_empty() || saved.token.is_empty() {
+        return;
+    }
+    let mut state = session().get();
+    state.connecting = true;
+    session().set(state);
+    spawn_global(async move {
+        let storage = api::server_config(&saved.base)
+            .await
+            .ok()
+            .and_then(|value| value["StorageType"].as_str().map(str::to_owned));
+        let Some(storage) = storage else {
+            let mut state = session().get();
+            state.connecting = false;
+            session().set(state);
+            toast(
+                "无法联系上次的实例，请检查网络后登录".to_owned(),
+                ToastTone::Error,
+            );
+            return;
+        };
+        crate::api_transport::install(&saved.base, &saved.token, &storage);
+        // A cheap authenticated call both validates the token and lets the
+        // transport refresh it when only the access window has passed.
+        let usable = match api::favorites(&saved.base, &saved.token).await {
+            Ok(_) => true,
+            Err(error) if error.is_auth() => false,
+            Err(_) => true,
+        };
+        if usable {
+            begin_real_session(saved.base, saved.username, saved.token);
+        } else {
+            crate::session_store::clear();
+            let mut state = session().get();
+            state.connecting = false;
+            session().set(state);
+            logbook::event("session_restore_expired", serde_json::json!({}));
+            toast("上次登录已失效，请重新输入密码".to_owned(), ToastTone::Info);
+        }
+    });
 }
 
 pub fn save_current_settings() {
@@ -919,6 +970,7 @@ pub fn enter_demo() {
 
 pub fn leave_session() {
     crate::relay::clear();
+    crate::session_store::clear();
     let mut state = session().get();
     let was_demo = state.mode == Mode::Demo;
     state.mode = Mode::None;
@@ -941,7 +993,8 @@ pub fn leave_session() {
     go(Route::Connect);
 }
 
-/// A successful login: the token stays in memory only.
+/// A successful login: the request token stays in memory, and a DPAPI-sealed
+/// copy is kept so the next launch can resume without the password.
 pub fn begin_real_session(base: String, username: String, token: String) {
     let profile = profile_for(&base, &username);
     let mut state = session().get();
@@ -955,6 +1008,7 @@ pub fn begin_real_session(base: String, username: String, token: String) {
     state.generation += 1;
     session().set(state);
     crate::relay::configure(&base, &session().get().token);
+    crate::session_store::save(&base, &username, &session().get().token);
     let mut stored = settings().get();
     stored.instance = base.clone();
     stored.demo_active = false;
@@ -978,6 +1032,7 @@ pub fn begin_real_session(base: String, username: String, token: String) {
 
 pub fn session_expired() {
     crate::relay::clear();
+    crate::session_store::clear();
     let mut state = session().get();
     if state.expired {
         return;
